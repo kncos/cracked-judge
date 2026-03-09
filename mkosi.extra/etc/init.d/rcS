@@ -1,0 +1,17 @@
+#!/bin/sh
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t cgroup2 cgroup2 /sys/fs/cgroup
+mount -t devtmpfs devtmpfs /dev
+mount -t tmpfs tmpfs /tmp
+
+# networking
+ip link set eth0 up
+ip addr add 172.16.0.2/24 dev eth0
+ip route add default via 172.16.0.1
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+
+/bin/busybox hostname judge-vm
+
+ssh-keygen -A
+/usr/sbin/sshd

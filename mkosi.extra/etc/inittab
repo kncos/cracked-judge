@@ -1,0 +1,9 @@
+# sysinit
+::sysinit:/etc/init.d/rcS
+
+# console
+ttyS0::once:/usr/bin/agetty -L ttyS0 115200 vt100
+
+# reboot/shutdown
+::ctrlaltdel:/sbin/reboot
+::shutdown:/sbin/halt
