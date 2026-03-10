@@ -10,9 +10,11 @@ mkdir -p /tmp
 chmod 1777 /tmp
 
 
-
-pushd /app/drivers/cpp26/include >/dev/null
-./precompile.sh
-popd >/dev/null
+precompile_cpp26_headers() {
+  echo ">>> PRE-COMPILING C++26 HEADERS"
+  pushd /app/drivers/cpp26/include >/dev/null
+  ./precompile.sh
+  popd >/dev/null
+}
 
 # echo "" > /etc/issue

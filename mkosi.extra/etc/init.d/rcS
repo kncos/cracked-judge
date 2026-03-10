@@ -11,6 +11,17 @@ mkdir -p /sys/fs/cgroup/isolate
 echo "+cpuset +memory" > /sys/fs/cgroup/isolate/cgroup.subtree_control
 mkdir -p /run/isolate/locks
 
+export PATH=/usr/local/bin:$PATH
+
+# fix isolate environment
+isolate-check-environment -e &>/dev/null || true
+echo ">>> ISOLATE ENVIRONMENT CHECK"
+if ! isolate-check-environment; then
+  echo ">>> ISOLATE ENVIRONMENT FAILED CHECK"
+else
+  echo ">>> ISOLATE ENVIRONMENT PASSES CHECK"
+fi
+
 # networking
 ip link set eth0 up
 ip addr add 172.16.0.2/24 dev eth0

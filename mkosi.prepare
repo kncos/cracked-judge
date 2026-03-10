@@ -27,6 +27,4 @@ install_glaze() {
   rm -rf $WORKDIR
 }
 
-install_isolate() {
-  
-}
+install_glaze

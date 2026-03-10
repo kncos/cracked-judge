@@ -3,7 +3,7 @@ set -eu
 KERNEL_VERSION="6.1.163"
 KERNEL_FILE="vmlinux-$KERNEL_VERSION"
 ROOTFS="rootfs.ext4"
-MKOSI_FILES=("mkosi.conf" "mkosi.postinst.chroot" "mkosi.prepare")
+MKOSI_FILES=("mkosi.conf" "mkosi.postinst.chroot" "mkosi.prepare" "mkosi.build")
 get_hash() {
   {
     cat "${MKOSI_FILES[@]}"
