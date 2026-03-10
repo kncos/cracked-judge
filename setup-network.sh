@@ -3,7 +3,7 @@
 # this file sets up networking on the host so that the firecracker vm has access to the outside world
 # note: 
 
-set -e
+set -eu
 
 ip link del tap0 2>/dev/null || true
 ip tuntap add dev tap0 mode tap
