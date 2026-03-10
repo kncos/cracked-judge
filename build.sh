@@ -4,9 +4,17 @@ KERNEL_VERSION="6.1.163"
 KERNEL_FILE="vmlinux-$KERNEL_VERSION"
 ROOTFS="rootfs.ext4"
 MKOSI_FILES=("mkosi.conf" "mkosi.postinst.chroot")
+get_hash() {
+  {
+    cat "${MKOSI_FILES[@]}"
+    find mkosi.extra -type f | sort | xargs cat
+  } | md5sum
+}
 
 REBUILD_KERNEL=false
 REBUILD_ROOTFS=false
+
+ROOT_DIR=$(pwd)
 
 help() {
   echo "Usage: $0 [options]"
@@ -21,35 +29,61 @@ die() {
   exit 1
 }
 
+cleanup_on_exit() {
+  cd "$ROOT_DIR"
+  if [ -n "${KERNEL_WORKDIR:-}" ] && [ -d "$KERNEL_WORKDIR" ]; then
+    echo "Cleaning up temporary directory: $KERNEL_WORKDIR"
+    sudo rm -rf $KERNEL_WORKDIR
+  fi
+  if [ -n "mkosi.output" ] && [ -d "mkosi.output" ]; then
+    echo "Cleaning up mkosi.output"
+    sudo rm -rf "mkosi.output"
+  fi
+}
+trap cleanup_on_exit EXIT
+
+KERNEL_WORKDIR=""
 build_kernel() {
   echo ">>> starting kernel build"
-  WORKDIR=$(mktemp -d kernel-tmp-XXXXXXXX)
+  # Create the temp dir in the CURRENT directory so the final "cp .. " works correctly
+  KERNEL_WORKDIR=$(mktemp -d ./kernel-tmp-XXXXXXXX)
 
-  pushd "$WORKDIR" > /dev/null
+  pushd "$KERNEL_WORKDIR" > /dev/null
 
-  # Download the source code archive
-  echo "Downloading Firecracker v1.15.0 kernel build scripts..."
-  curl -L https://github.com/firecracker-microvm/firecracker/archive/refs/tags/v1.15.0.tar.gz -o firecracker.tar.gz
+  echo "Cloning Firecracker v1.15.0..."
+  # Git clone instead of curl/tar to satisfy devtool requirements
+  git clone --depth 1 --branch v1.15.0 https://github.com/firecracker-microvm/firecracker.git
 
-  # Extract it
-  echo "Extracting build scripts..."
-  tar -xzf firecracker.tar.gz
-
-  # build 6.1
   echo "Invoking kernel 6.1 build script..."
-  ./firecracker-1.15.0/tools/devtool build_ci_artifacts kernels 6.1
+  cd firecracker
 
-  if ! ls ./firecracker-1.15.0/resources/x86_64/${KERNEL_FILE}* >/dev/null 2>&1; then
+  set +e
+  ./tools/devtool build_ci_artifacts kernels 6.1 2>&1 | sed 's/^/[firecracker devtool] /'
+  EXIT_CODE=${PIPESTATUS[0]}
+  echo "Devtool finished with exit code: $EXIT_CODE"
+
+  set -e
+
+  # Note: devtool creates the resources folder INSIDE the firecracker repo
+  # The path is now ./resources/... relative to the git root
+  SEARCH_PATH="./resources/x86_64/${KERNEL_FILE}"*
+
+  if ! ls $SEARCH_PATH >/dev/null 2>&1; then
     popd > /dev/null
-    die "Build failed: No matching files to ${KERNEL_FILE}* found in firecracker resources dir after build script"
+    die "Build failed: No matching files to ${KERNEL_FILE}* found."
   fi
 
   echo "Exporting artifacts..."
-  cp ./firecracker-1.15.0/resources/x86_64/${KERNEL_FILE}* ..
+  # Since we are inside $KERNEL_WORKDIR/firecracker, ".." is $KERNEL_WORKDIR, 
+  # so we need "../.." to get back to the project root.
+  cp $SEARCH_PATH ../..
 
   popd > /dev/null
-  rm -rf "$WORKDIR"
+  # The 'trap' will now handle 'rm -rf $KERNEL_WORKDIR' automatically
   echo ">>> Kernel Build Complete"
+
+  sudo rm -rf "$KERNEL_WORKDIR"
+  KERNEL_WORKDIR=""
 }
 
 build_rootfs() {
@@ -63,7 +97,7 @@ build_rootfs() {
   unshare --map-auto --map-root-user mkfs.ext4 -F -d mkosi.output/image "$ROOTFS"
   
   # Update the hash of mkosi files so we know they are "current"
-  cat "${MKOSI_FILES[@]}" mkosi.extra/** 2>/dev/null | md5sum > .mkosi_hash
+  get_hash >> .mkosi_hash
   echo ">>> RootFS Build Complete"
 }
 
@@ -94,9 +128,11 @@ fi
 
 MKOSI_CHANGED=false
 if [ -f .mkosi_hash ]; then
-  CURRENT_HASH=$(cat "${MKOSI_FILES[@]}" mkosi.extra/** 2>/dev/null | md5sum)
+  CURRENT_HASH=$(get_hash)
   OLD_HASH=$(cat .mkosi_hash)
   if [ "$CURRENT_HASH" != "$OLD_HASH" ]; then
+    # echo "old hash: $OLD_HASH" >> hashes.txt
+    # echo "new hash: $CURRENT_HASH" >> hashes.txt
     MKOSI_CHANGED=true
   fi
 else

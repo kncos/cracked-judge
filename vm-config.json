@@ -15,15 +15,6 @@
     "vcpu_count": 1,
     "mem_size_mib": 1024
   },
-  "logger": {
-    "log_path": "/tmp/fc.log",
-    "level": "Debug",
-    "show_level": true,
-    "show_log_origin": true
-  },
-  "metrics": {
-    "metrics_path": "/tmp/fc-metrics.fifo"
-  },
   "network-interfaces": [
     {
       "iface_id": "eth0",
