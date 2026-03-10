@@ -6,5 +6,6 @@ mkosi.cache
 fc.log
 firecracker
 kernel-tmp-*
-vmlinux-6.1.163 vmlinux-6.1.163.config
+vmlinux-*
 rootfs.ext4
+.mkosi_hash
