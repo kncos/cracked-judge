@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # --- mkosi.postinst.chroot ---
 
 set -euo pipefail
@@ -9,4 +9,7 @@ echo "root:root" | chpasswd
 mkdir -p /tmp
 chmod 1777 /tmp
 
-echo "" > /etc/issue
+pushd /app/drivers/cpp26/include >/dev/null
+./precompile.sh
+
+# echo "" > /etc/issue
