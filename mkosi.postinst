@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -eu
+
+mkdir -p $BUILDROOT/glz_workspace
+cd $BUILDROOT/glz_workspace
+git clone --depth 1 --branch v7.2.0 https://github.com/stephenberry/glaze.git
+cp -r glaze/include/glaze $BUILDROOT/usr/include/
+cd $BUILDROOT
+rm -rf $BUILDROOT/glz_workspace

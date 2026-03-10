@@ -3,7 +3,7 @@ set -eu
 KERNEL_VERSION="6.1.163"
 KERNEL_FILE="vmlinux-$KERNEL_VERSION"
 ROOTFS="rootfs.ext4"
-MKOSI_FILES=("mkosi.conf" "mkosi.postinst.chroot")
+MKOSI_FILES=("mkosi.conf" "mkosi.postinst.chroot" "mkosi.postinst")
 get_hash() {
   {
     cat "${MKOSI_FILES[@]}"
@@ -97,7 +97,7 @@ build_rootfs() {
   unshare --map-auto --map-root-user mkfs.ext4 -F -d mkosi.output/image "$ROOTFS"
   
   # Update the hash of mkosi files so we know they are "current"
-  get_hash >> .mkosi_hash
+  get_hash > .mkosi_hash
   echo ">>> RootFS Build Complete"
 }
 
@@ -131,8 +131,8 @@ if [ -f .mkosi_hash ]; then
   CURRENT_HASH=$(get_hash)
   OLD_HASH=$(cat .mkosi_hash)
   if [ "$CURRENT_HASH" != "$OLD_HASH" ]; then
-    # echo "old hash: $OLD_HASH" >> hashes.txt
-    # echo "new hash: $CURRENT_HASH" >> hashes.txt
+    echo "old hash: $OLD_HASH" >> hashes.txt
+    echo "new hash: $CURRENT_HASH" >> hashes.txt
     MKOSI_CHANGED=true
   fi
 else
