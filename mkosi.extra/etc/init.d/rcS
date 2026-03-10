@@ -5,6 +5,12 @@ mount -t cgroup2 cgroup2 /sys/fs/cgroup
 mount -t devtmpfs devtmpfs /dev
 mount -t tmpfs tmpfs /tmp
 
+# cgroup setup for isolate
+echo "+cpuset +memory" > /sys/fs/cgroup/cgroup.subtree_control
+mkdir -p /sys/fs/cgroup/isolate
+echo "+cpuset +memory" > /sys/fs/cgroup/isolate/cgroup.subtree_control
+mkdir -p /run/isolate/locks
+
 # networking
 ip link set eth0 up
 ip addr add 172.16.0.2/24 dev eth0
