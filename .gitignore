@@ -8,4 +8,4 @@ firecracker
 kernel-tmp-*
 vmlinux-*
 rootfs.ext4
-.mkosi_hash
+.mkosi_hashtmp.sh
