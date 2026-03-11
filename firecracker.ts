@@ -101,26 +101,27 @@ export const spawnVM = async (
   const chrootRoot = join(workdir, "firecracker", vmId, "root");
   await $`mkdir -p ${chrootRoot}`.quiet();
 
-  // Symlink kernel + rootfs into the chroot so the relative paths in the
+  // Copy kernel + rootfs into the chroot so the relative paths in the
   // config file resolve correctly when Firecracker runs inside the jail
-  await $`ln -sf ${KERNEL} ${join(chrootRoot, "vmlinux-6.1.163")}`.quiet();
-  await $`ln -sf ${ROOTFS}  ${join(chrootRoot, "rootfs.ext4")}`.quiet();
+  await $`cp --reflink=always ${KERNEL} ${join(chrootRoot, "vmlinux-6.1.163")}`.quiet();
+  await $`cp --reflink=always ${ROOTFS}  ${join(chrootRoot, "rootfs.ext4")}`.quiet();
 
-  // Write a per-VM config stamped with this VM's CID.
-  // The uds_path (./v.sock) stays the same for every VM — it's already
-  // partitioned by the chroot directory, so no uniqueness needed there.
-  const baseConfig = JSON.parse(await Bun.file(VM_CONFIG).text());
-  const vmConfig = {
-    ...baseConfig,
-    vsock: {
-      ...baseConfig.vsock,
-      guest_cid: cid,
-    },
-  };
+  // Write a per-VM config with a unique guest_cid (CIDs must be unique across
+  // all running VMs on the host — the vhost-vsock kernel module uses the CID
+  // to route guest-initiated packets, so sharing CIDs causes conflicts).
+  const vmConfig = JSON.parse(await Bun.file(VM_CONFIG).text());
+  vmConfig.vsock.guest_cid = cid;
   await Bun.write(
     join(chrootRoot, "vm-config.json"),
     JSON.stringify(vmConfig, null, 2),
   );
+
+  // 2. FIX: Give ownership to the Jailer user (UID 60000)
+  // This allows the Firecracker process to read/write these files.
+  await $`chown ${UID}:${GID} ${join(chrootRoot, "rootfs.ext4")}`.quiet();
+  await $`chown ${UID}:${GID} ${join(chrootRoot, "vmlinux-6.1.163")}`.quiet();
+  await $`chown ${UID}:${GID} ${join(chrootRoot, "vm-config.json")}`.quiet();
+  await $`chmod 777 ${join(chrootRoot)}`;
 
   const proc = Bun.spawn(
     [
@@ -137,7 +138,7 @@ export const spawnVM = async (
       workdir,
       "--",
       "--config-file",
-      "vm-config.json",
+      join("vm-config.json"),
     ],
     {
       stdout: "inherit",
@@ -173,13 +174,61 @@ const main = async () => {
   await $`mkdir -p ${workdir}`.quiet();
 
   const vmIds = ["vm0", "vm1", "vm2"];
+  const vsock_dir = (vmid: string) =>
+    join(workdir, "firecracker", vmid, "root");
+  const vsock_path = (vmid: string) => join(vsock_dir(vmid), "v.sock_52");
+
+  // Listen on the AF_UNIX socket that Firecracker forwards guest vsock port 52
+  // connections to. Each guest connection sends lines; we tag and print them.
+  // The socket path must NOT exist as a directory — Bun.listen creates it as
+  // a Unix socket file. We ensure the parent dir exists and remove any stale path.
+  const listenForMessages = async (vmid: string): Promise<void> => {
+    const sockPath = vsock_path(vmid);
+    await $`mkdir -p ${vsock_dir(vmid)}`.quiet();
+    await $`rm -f ${sockPath}`.quiet();
+
+    return new Promise((resolve) => {
+      const server = Bun.listen<{ buf: string }>({
+        unix: sockPath,
+        socket: {
+          open(socket) {
+            socket.data = { buf: "" };
+          },
+          data(socket, chunk) {
+            socket.data.buf += new TextDecoder().decode(chunk);
+            const lines = socket.data.buf.split("\n");
+            socket.data.buf = lines.pop()!; // keep incomplete last line
+            for (const line of lines) {
+              if (line.trim()) console.log(`[${vmid}]: ${line}`);
+            }
+          },
+          close() {},
+          error(_, err) {
+            console.error(`[${vmid}] socket error:`, err);
+          },
+        },
+      });
+
+      // Bun.listen() creates the socket file synchronously before returning.
+      // Firecracker runs as UID/GID 60000 inside the jailer and needs to be
+      // able to connect to this socket, so chown it now (we're running as root).
+      $`chown ${UID}:${GID} ${sockPath}`.quiet();
+
+      // Stop listening after 30 s (matches the old timeout)
+      setTimeout(() => {
+        server.stop();
+        resolve();
+      }, 30_000);
+    });
+  };
+
+  const vsockListeners = Promise.all(vmIds.map((id) => listenForMessages(id)));
 
   console.log(`[*] spawning ${vmIds.length} VMs...`);
   const workers = await Promise.all(
     vmIds.map((id, i) => {
-      const cid = BASE_CID + i;
-      console.log(`  [+] spawning ${id} (CID ${cid})`);
-      return spawnVM(id, workdir, cid);
+      console.log(`  [+] spawning ${id}`);
+      return spawnVM(id, workdir, BASE_CID + i);
     }),
   );
 
@@ -194,6 +243,8 @@ const main = async () => {
       }
     }),
   );
+
+  await vsockListeners;
 
   console.log("[*] terminating all VMs");
   await Promise.all(workers.map((w) => w.terminate()));

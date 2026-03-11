@@ -2,7 +2,8 @@
 ::sysinit:/etc/init.d/rcS
 
 # console
-ttyS0::once:/usr/bin/agetty -L ttyS0 115200 vt100
+# ttyS0::once:/usr/bin/agetty -L ttyS0 115200 vt100
+::respawn:/bin/sh -c 'echo "Hello from guest" | socat - VSOCK-CONNECT:2:52;sleep 3'
 
 # reboot/shutdown
 ::ctrlaltdel:/sbin/reboot

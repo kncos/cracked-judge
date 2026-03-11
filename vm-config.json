@@ -1,7 +1,7 @@
 {
   "boot-source": {
     "kernel_image_path": "vmlinux-6.1.163",
-    "boot_args": "console=ttyS0 reboot=k panic=1 pci=off nomodule root=/dev/vda rw init=/sbin/busybox init"
+    "boot_args": "reboot=k panic=1 pci=off nomodule root=/dev/vda rw init=/sbin/busybox init"
   },
   "drives": [
     {

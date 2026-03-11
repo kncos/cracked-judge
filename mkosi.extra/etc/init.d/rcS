@@ -23,12 +23,12 @@ else
 fi
 
 # networking
-ip link set eth0 up
-ip addr add 172.16.0.2/24 dev eth0
-ip route add default via 172.16.0.1
-echo "nameserver 8.8.8.8" > /etc/resolv.conf
+# ip link set eth0 up
+# ip addr add 172.16.0.2/24 dev eth0
+# ip route add default via 172.16.0.1
+# echo "nameserver 8.8.8.8" > /etc/resolv.conf
 
 /bin/busybox hostname judge-vm
 
-ssh-keygen -A
-/usr/sbin/sshd
+# ssh-keygen -A
+# /usr/sbin/sshd
