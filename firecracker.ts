@@ -1,121 +1,163 @@
-// run with bun run; this is a basic script i'm using
-// to communicate with firecracker api
-
+import { $ } from "bun";
+import { join, resolve } from "node:path";
 import createClient from "openapi-fetch";
 import type { paths } from "./firecracker-types";
 
-export const createFirecrackerClient = (socketPath: string) => {
-  return createClient<paths>({
+// ── Config ────────────────────────────────────────────────────────────────────
+
+const FIRECRACKER_BIN = resolve("./firecracker");
+const JAILER_BIN = resolve("./jailer");
+const KERNEL = resolve("./vmlinux-6.1.163");
+const ROOTFS = resolve("./rootfs.ext4");
+
+const UID = 60000;
+const GID = 60000;
+
+// ── Client ────────────────────────────────────────────────────────────────────
+
+const makeClient = (socketPath: string) =>
+  createClient<paths>({
     baseUrl: "http://localhost",
-    fetch: (request: Request | string, init?: RequestInit) => {
+    fetch: (request) => {
       const url =
         typeof request === "string"
           ? request
           : (request as Request).url.replace(/^http:\/\/localhost/, "");
-
       return fetch(`http://localhost${url}`, {
-        ...init,
+        method: (request as Request).method,
+        headers: (request as Request).headers,
+        body: (request as Request).body,
         unix: socketPath,
       });
     },
   });
+
+// ── Socket ────────────────────────────────────────────────────────────────────
+
+const waitForSocket = async (
+  socketPath: string,
+  timeoutMs = 5000,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  let lastError: unknown;
+
+  while (Date.now() < deadline) {
+    try {
+      await fetch("http://localhost/", { unix: socketPath });
+      return;
+    } catch (e) {
+      lastError = e;
+      await Bun.sleep(100);
+    }
+  }
+
+  throw new Error(
+    `Socket ${socketPath} not ready after ${timeoutMs}ms: ${lastError}`,
+  );
 };
 
-const createFirecracker = (id: string) => {
-  const vmname = `vm-${id}`;
-  const socket = `${vmname}.socket`;
+// ── VM Worker ─────────────────────────────────────────────────────────────────
+
+export type VMWorker = {
+  id: string;
+  socketPath: string;
+  client: ReturnType<typeof makeClient>;
+  terminate: () => Promise<void>;
+};
+
+/**
+ * Spawns a jailed Firecracker VM and waits until its API socket is ready.
+ * Returns a client for the VM's API and a `terminate()` function to shut it down.
+ *
+ * The jailer places the socket at:
+ *   <workdir>/firecracker/<vmId>/root/run/firecracker.socket
+ */
+export const spawnVM = async (
+  vmId: string,
+  workdir: string,
+): Promise<VMWorker> => {
+  // Deterministic host-side path — no need to pass --api-sock
+  const socketPath = join(
+    workdir,
+    "firecracker",
+    vmId,
+    "root",
+    "run",
+    "firecracker.socket",
+  );
+
   const proc = Bun.spawn(
     [
-      "jailer",
+      JAILER_BIN,
       "--exec-file",
-      "/bin/firecracker",
-      "--gid",
-      "60000",
-      "--id",
-      vmname,
+      FIRECRACKER_BIN,
       "--uid",
-      "60000",
-      "--",
-      "--api-sock",
-      socket,
+      String(UID),
+      "--gid",
+      String(GID),
+      "--id",
+      vmId,
+      "--chroot-base-dir",
+      workdir,
     ],
     {
-      async onExit(proc, exitCode, signalCode, error) {
-        const socketfile = Bun.file(socket);
-        if (await socketfile.exists()) {
-          await socketfile.delete();
-        }
-      },
+      stdout: "inherit",
+      stderr: "inherit",
     },
   );
 
-  const client = createFirecrackerClient(socket);
-  return { client, proc, socket };
+  try {
+    await waitForSocket(socketPath);
+  } catch (e) {
+    proc.kill();
+    await proc.exited;
+    throw e;
+  }
+
+  const client = makeClient(socketPath);
+
+  const terminate = async () => {
+    proc.kill();
+    await proc.exited;
+    await $`rm -rf ${join(workdir, "firecracker", vmId)}`.quiet();
+  };
+
+  return { id: vmId, socketPath, client, terminate };
 };
 
-const waitForSocket = async (socket: string, timeoutMs = 2000) => {
-  const timeoutms = 1000;
-  const start = Date.now();
-  while (Date.now() - start < timeoutms) {
-    try {
-      await fetch("http://localhost/", { unix: socket });
-      return true;
-    } catch {
-      Bun.sleep(100);
-    }
-  }
-  console.error("[ERROR] socket timed out...");
-  return false;
-};
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 const main = async () => {
-  const { client, proc, socket } = createFirecracker("0");
-  const socketOk = await waitForSocket(socket);
-  if (!socketOk) {
-    process.exit(-1);
-  }
+  const workdir = resolve(process.argv[2] ?? "./vm-workspace");
 
-  const results = await Promise.all([
-    client.PUT("/boot-source", {
-      body: {
-        kernel_image_path: "vmlinux-6.1.163",
-        boot_args:
-          "console=ttyS0 reboot=k panic=1 pci=off nomodule root=/dev/vda rw init=/sbin/busybox init",
-      },
-    }),
-    client.PUT("/drives/{drive_id}", {
-      body: {
-        drive_id: "rootfs",
-        path_on_host: "rootfs.ext4",
-        is_root_device: true,
-        is_read_only: false,
-        io_engine: "Sync",
-        cache_type: "Unsafe",
-      },
-      params: {
-        path: {
-          drive_id: "rootfs",
-        },
-      },
-    }),
-    client.PUT("/machine-config", {
-      body: {
-        mem_size_mib: 1024,
-        vcpu_count: 1,
-        smt: false,
-        track_dirty_pages: false,
-      },
-    }),
-  ]);
+  console.log(`[*] workspace: ${workdir}`);
+  await $`mkdir -p ${workdir}`.quiet();
 
-  const failed = results.find((r) => r.error);
-  if (failed) {
-    console.error(
-      failed?.error?.fault_message || "failed but no fault_message",
-    );
-    proc.kill();
-    process.exit(-1);
-  }
+  const vmIds = ["vm0", "vm1", "vm2"];
+
+  console.log(`[*] spawning ${vmIds.length} VMs...`);
+  const workers = await Promise.all(
+    vmIds.map((id) => {
+      console.log(`  [+] spawning ${id}`);
+      return spawnVM(id, workdir);
+    }),
+  );
+
+  console.log("[*] all sockets ready, calling GET / on each VM");
+  await Promise.all(
+    workers.map(async ({ id, client }) => {
+      const { data, error } = await client.GET("/");
+      if (error) {
+        console.error(`  [${id}] GET / error:`, error);
+      } else {
+        console.log(`  [${id}] GET / =>`, JSON.stringify(data));
+      }
+    }),
+  );
+
+  console.log("[*] terminating all VMs");
+  await Promise.all(workers.map((w) => w.terminate()));
+  console.log("[*] done");
 };
 
 await main();
