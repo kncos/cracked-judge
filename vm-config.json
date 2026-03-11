@@ -15,11 +15,8 @@
     "vcpu_count": 1,
     "mem_size_mib": 1024
   },
-  "network-interfaces": [
-    {
-      "iface_id": "eth0",
-      "guest_mac": "AA:FC:00:00:00:01",
-      "host_dev_name": "tap0"
-    }
-  ]
+  "vsock": {
+    "guest_cid": 3,
+    "uds_path": "./v.sock"
+  }
 }

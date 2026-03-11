@@ -9,9 +9,13 @@ const FIRECRACKER_BIN = resolve("./firecracker");
 const JAILER_BIN = resolve("./jailer");
 const KERNEL = resolve("./vmlinux-6.1.163");
 const ROOTFS = resolve("./rootfs.ext4");
+const VM_CONFIG = resolve("./vm-config.json");
 
 const UID = 60000;
 const GID = 60000;
+
+// CIDs 0-2 are reserved by the vsock spec (hypervisor=0, local=1, host=2)
+const BASE_CID = 3;
 
 // ── Client ────────────────────────────────────────────────────────────────────
 
@@ -71,10 +75,17 @@ export type VMWorker = {
  *
  * The jailer places the socket at:
  *   <workdir>/firecracker/<vmId>/root/run/firecracker.socket
+ *
+ * @param vmId     Unique VM identifier (e.g. "vm0")
+ * @param workdir  Base workspace directory
+ * @param cid      Guest CID — must be unique across all *running* VMs on the host
+ *                 (kernel/vhost-vsock requirement, unrelated to path partitioning).
+ *                 CIDs 0-2 are reserved; use BASE_CID + index.
  */
 export const spawnVM = async (
   vmId: string,
   workdir: string,
+  cid: number,
 ): Promise<VMWorker> => {
   // Deterministic host-side path — no need to pass --api-sock
   const socketPath = join(
@@ -84,6 +95,31 @@ export const spawnVM = async (
     "root",
     "run",
     "firecracker.socket",
+  );
+
+  // Pre-create the chroot root so we can drop files in before the jailer starts
+  const chrootRoot = join(workdir, "firecracker", vmId, "root");
+  await $`mkdir -p ${chrootRoot}`.quiet();
+
+  // Symlink kernel + rootfs into the chroot so the relative paths in the
+  // config file resolve correctly when Firecracker runs inside the jail
+  await $`ln -sf ${KERNEL} ${join(chrootRoot, "vmlinux-6.1.163")}`.quiet();
+  await $`ln -sf ${ROOTFS}  ${join(chrootRoot, "rootfs.ext4")}`.quiet();
+
+  // Write a per-VM config stamped with this VM's CID.
+  // The uds_path (./v.sock) stays the same for every VM — it's already
+  // partitioned by the chroot directory, so no uniqueness needed there.
+  const baseConfig = JSON.parse(await Bun.file(VM_CONFIG).text());
+  const vmConfig = {
+    ...baseConfig,
+    vsock: {
+      ...baseConfig.vsock,
+      guest_cid: cid,
+    },
+  };
+  await Bun.write(
+    join(chrootRoot, "vm-config.json"),
+    JSON.stringify(vmConfig, null, 2),
   );
 
   const proc = Bun.spawn(
@@ -99,6 +135,9 @@ export const spawnVM = async (
       vmId,
       "--chroot-base-dir",
       workdir,
+      "--",
+      "--config-file",
+      "vm-config.json",
     ],
     {
       stdout: "inherit",
@@ -137,9 +176,10 @@ const main = async () => {
 
   console.log(`[*] spawning ${vmIds.length} VMs...`);
   const workers = await Promise.all(
-    vmIds.map((id) => {
-      console.log(`  [+] spawning ${id}`);
-      return spawnVM(id, workdir);
+    vmIds.map((id, i) => {
+      const cid = BASE_CID + i;
+      console.log(`  [+] spawning ${id} (CID ${cid})`);
+      return spawnVM(id, workdir, cid);
     }),
   );
 
