@@ -1,44 +1,35 @@
 import { $ } from "bun";
 import { mkdir } from "node:fs/promises";
-import path, { join } from "node:path";
+import { join } from "node:path";
+import { tryCatch } from "./utils";
 
 const DUID = 60000;
 const DGID = 60000;
-const DMOD = 0o777;
+const DMOD = 777;
 
-const addBinds = async (params: {
+const addBind = async (params: {
+  src: string;
   dest: string;
-  binds: string[];
   uid?: number;
   gid?: number;
 }) => {
-  const { dest, binds, uid = DUID, gid = DGID } = params;
+  const { src, dest, uid = DUID, gid = DGID } = params;
+  await Promise.all([
+    mkdir(src, { recursive: true }),
+    mkdir(dest, { recursive: true }),
+  ]);
+  await $`mount --bind --map-users 0:${uid}:60000 --map-groups 0:${gid}:60000 ${src} ${dest}`;
 
-  await Promise.all(
-    binds.map(async (bindPath) => {
-      const name = path.basename(bindPath);
-      const bindDest = join(dest, name);
-      await mkdir(bindDest, { recursive: true });
-      // will this work if the host file isn't owned by root (uid 0)?
-      await $`mount --bind --idmap u:0:${uid}:1 g:0:${gid}:1 ${bindPath} ${bindDest}`;
-    }),
-  );
-
-  const destroy = async () => {
-    await Promise.all(
-      binds.map(async (bindPath) => {
-        const name = path.basename(bindPath);
-        const bindDest = join(dest, name);
-        await $`umount -l ${bindDest}`;
-      }),
-    );
-  };
+  const destroy = async () => await $`umount -l ${dest}`;
   return { destroy };
 };
 
 const addOverlay = async (params: {
+  /** The directory to mount the overlay into */
   dest: string;
+  /** The read-only lower layer */
   src: string;
+  /** Where to store upper/ and workdir/ (overlay state, outside the chroot) */
   workspaceDir: string;
   uid?: number;
   gid?: number;
@@ -65,10 +56,7 @@ const addOverlay = async (params: {
   await $`chown -R ${uid}:${gid} ${dest}`;
   await $`chmod -R ${mode} ${dest}`;
 
-  const destroy = async () => {
-    await $`umount -l ${dest}`;
-    await $`rm -rf ${dest} ${workspaceDir}`;
-  };
+  const destroy = async () => await $`umount -l ${dest}`;
   return { destroy };
 };
 
@@ -93,21 +81,39 @@ export class VmFilesys {
 
   create = async (vmId: string) => {
     const chroot = join(this._jailerRoot, "firecracker", vmId, "root");
-    const vmSocks = join(this._socksDir, vmId, "socks");
-    const { destroy: destroyOverlay } = await addOverlay({
-      dest: chroot,
-      src: this._baseDir,
-      workspaceDir: join(this._workspaceDir, vmId),
-    });
+    const baseDir = join(chroot, "base");
+    const socksDir = join(chroot, "socks");
+    const vmSocks = join(this._socksDir, vmId);
 
-    const { destroy: destroyBinds } = await addBinds({
-      dest: chroot,
-      binds: [vmSocks],
-    });
+    const { data: overlayData, error: overlayError } = await tryCatch(
+      addOverlay({
+        dest: baseDir,
+        src: this._baseDir,
+        workspaceDir: join(this._workspaceDir, vmId),
+      }),
+    );
+    if (overlayError) {
+      console.log("[ADDOVERLAY ERROR]", overlayError);
+      process.exit(-1);
+    }
+
+    const { data: bindData, error: bindError } = await tryCatch(
+      addBind({
+        src: vmSocks,
+        dest: socksDir,
+      }),
+    );
+    if (bindError) {
+      console.log("[ADDBIND ERROR]", bindError);
+      await overlayData.destroy();
+      process.exit(-1);
+    }
 
     const destroy = async () => {
-      await destroyBinds();
-      await destroyOverlay();
+      // unmount inner mounts first, then rm the whole chroot tree
+      await bindData.destroy();
+      await overlayData.destroy();
+      await $`rm -rf ${chroot}`;
     };
     return { destroy };
   };
