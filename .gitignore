@@ -9,3 +9,4 @@ kernel-tmp-*
 vmlinux-*
 rootfs.ext4
 .mkosi_hashtmp.sh
+build-tmp-*
