@@ -1,29 +1,56 @@
-import { join } from "node:path";
+import { join } from "path";
+import { VmFilesys } from "./filesys";
 
-class VmSocketManager {
-  _srcDir: string;
-  _targetDir: string;
-  _defaultPort: number;
+const root = "/tmp/vm-tests";
+const base = join(root, "base");
+const socks = join(root, "socks");
+const workspace = join(root, "workspace");
+const jail = join(root, "jail");
 
-  constructor(params: {
-    srcDir?: string | undefined;
-    targetDir: string;
-    defaultPort?: number | undefined;
-  }) {
-    const { srcDir, targetDir, defaultPort } = params;
-    this._srcDir = srcDir || join(__dirname, "sockets");
-    this._targetDir = targetDir;
-    this._defaultPort = defaultPort || 52;
-  }
+const vmfs = new VmFilesys({
+  socksDir: socks,
+  baseDir: base,
+  jailerRoot: jail,
+  workspaceDir: workspace,
+});
 
-  acquire_socket(params: { vmId: string; port?: number | undefined }) {
-    const { vmId, port = this._defaultPort } = params;
-    // srcDir will be a managed directory where we store all sockets outside
-    // of the jailer directory, then we'll use a bind mount to place it in
-    // jailer
-    const socketPath = join(this._srcDir, vmId, `v.sock_${port}`);
-    const socket = new VmSocket(socketPath, this._defaultPort);
-    socket.listen();
-    return socket;
-  }
-}
+const listenOnSocket = async (vmId: string, port: number = 52) => {
+  const server = Bun.serve({
+    unix: join(socks, vmId, "socks", `v.sock_${port}`),
+    async fetch(req) {
+      const buf = await req.arrayBuffer();
+      const str = new TextDecoder().decode(buf);
+      console.log(`[${vmId} SOCKET] ${str}`);
+      return new Response("Received");
+    },
+  });
+  return { server };
+};
+
+export const createVm = async (vmId: string) => {
+  const { destroy: destroyFs } = await vmfs.create(vmId);
+  const { server } = await listenOnSocket(vmId);
+
+  const proc = Bun.spawn([
+    "./jailer",
+    "--exec-file",
+    "./firecracker",
+    "--uid",
+    "60000",
+    "--gid",
+    "60000",
+    "--id",
+    vmId,
+    "--chroot-base-dir",
+    jail,
+    "--",
+    "--config-file",
+    "vm-config.json",
+  ]);
+
+  const destroy = async () => {
+    await server.stop();
+    await destroyFs();
+  };
+  return { destroy };
+};

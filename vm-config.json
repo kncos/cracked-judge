@@ -17,6 +17,6 @@
   },
   "vsock": {
     "guest_cid": 3,
-    "uds_path": "./v.sock"
+    "uds_path": "./socks/v.sock"
   }
 }

@@ -1,8 +1,7 @@
-#!/usr/bin/env bun
+import { createVm } from "./src/vm-sockets";
 
-import { server } from './src/server';
+const { destroy } = await createVm("vm0");
 
-server.listen(3000, '0.0.0.0', () => console.log('Listening on 0.0.0.0:3000'));
+Bun.sleep(8000);
 
-// const planet = await orpc.math.add({ a: 1, b: 2 });
-// console.log(planet.sum);
+await destroy();
