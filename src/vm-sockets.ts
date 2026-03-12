@@ -17,7 +17,7 @@ const vmfs = new VmFilesys({
 
 const listenOnSocket = (vmId: string, port: number = 52) => {
   const server = Bun.listen<{ buf: string }>({
-    unix: join(socks, vmId, "socks", `v.sock_${port}`),
+    unix: join(socks, vmId, `v.sock_${port}`),
     socket: {
       open(socket) {
         socket.data = { buf: "" };
@@ -43,16 +43,18 @@ const listenOnSocket = (vmId: string, port: number = 52) => {
 };
 
 export const createVm = async (vmId: string) => {
+  // ensure socks dir exists and clear any stale socket from a previous run
+  const sockDir = join(socks, vmId);
+  const sockPath = join(sockDir, `v.sock_52`);
+  await $`mkdir -p ${sockDir}`;
+  await $`rm -f ${sockPath}`;
+
+  // start listening before vmfs.create() so the socket inode exists
+  // when the bind mount exposes the socks dir into the chroot
+  const { server } = listenOnSocket(vmId);
   const { destroy: destroyFs } = await vmfs.create(vmId);
-  // const { server } = listenOnSocket(vmId);
-  const sockPath = join(socks, vmId, `v.sock_52`);
-  const socat = Bun.spawn(
-    ["socat", "-", `UNIX-LISTEN:${sockPath},fork,reuseaddr,unlink-early`],
-    {
-      stdout: "inherit",
-      stderr: "inherit",
-    },
-  );
+
+  await $`tree -pug ${jail}`;
 
   const proc = Bun.spawn(
     [
@@ -78,15 +80,14 @@ export const createVm = async (vmId: string) => {
   );
 
   console.log("--- vm spawned ---");
-  await $`tree -pug ${jail}`;
-  await $`tree -pug ${socks}`;
-  console.log("--- ---");
+  //  await $`tree -pug ${jail}`;
+  //  await $`tree -pug ${socks}`;
+  //  console.log("--- ---");
 
   const destroy = async () => {
     console.log("--- destroying vm ---");
-    // server.stop();
+    server.stop();
     proc.kill();
-    socat.kill();
     await destroyFs();
   };
   return { destroy };
