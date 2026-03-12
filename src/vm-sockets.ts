@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { join } from "path";
-import { VmFilesys } from "./filesys";
+import { VmFileSystem } from "./filesys";
 
 const root = "/tmp/vm-tests";
 const base = join(root, "base");
@@ -8,11 +8,22 @@ const socks = join(root, "socks");
 const workspace = join(root, "workspace");
 const jail = join(root, "jail");
 
-const vmfs = new VmFilesys({
-  socksDir: socks,
-  baseDir: base,
-  jailerRoot: jail,
-  workspaceDir: workspace,
+export class VmManager {
+  constructor() {
+    await using vmfs = new VmFileSystem({
+      socks,
+      base,
+      workspace,
+      jail,
+    });
+  }
+}
+
+const vmfs = new VmFileSystem({
+  socks,
+  base,
+  jail,
+  workspace,
 });
 
 const listenOnSocket = (vmId: string, port: number = 52) => {
@@ -52,7 +63,7 @@ export const createVm = async (vmId: string) => {
   // start listening before vmfs.create() so the socket inode exists
   // when the bind mount exposes the socks dir into the chroot
   const { server } = listenOnSocket(vmId);
-  const { destroy: destroyFs } = await vmfs.create(vmId);
+  await vmfs.acquireLease("");
 
   await $`tree -pug ${jail}`;
 

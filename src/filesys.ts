@@ -1,120 +1,93 @@
 import { $ } from "bun";
-import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { tryCatch } from "./utils";
+import { fileExists } from "./utils";
 
-const DUID = 60000;
-const DGID = 60000;
-const DMOD = 777;
-
-const addBind = async (params: {
-  src: string;
-  dest: string;
-  uid?: number;
-  gid?: number;
-}) => {
-  const { src, dest, uid = DUID, gid = DGID } = params;
-  await Promise.all([
-    mkdir(src, { recursive: true }),
-    mkdir(dest, { recursive: true }),
-  ]);
-  await $`mount --bind --map-users 0:${uid}:60000 --map-groups 0:${gid}:60000 ${src} ${dest}`;
-
-  const destroy = async () => await $`umount -l ${dest}`;
-  return { destroy };
+type VmConfig = {
+  jail: string;
+  base: string;
+  socks: string;
+  workspace: string;
+  sockPort?: number;
+  uid?: string;
+  gid?: string;
+  mode?: string;
 };
 
-const addOverlay = async (params: {
-  /** The directory to mount the overlay into */
-  dest: string;
-  /** The read-only lower layer */
-  src: string;
-  /** Where to store upper/ and workdir/ (overlay state, outside the chroot) */
-  workspaceDir: string;
-  uid?: number;
-  gid?: number;
-  mode?: number;
-}) => {
-  const {
-    dest,
-    src,
-    workspaceDir,
-    uid = DUID,
-    gid = DGID,
-    mode = DMOD,
-  } = params;
-  const upper = join(workspaceDir, "upper");
-  const workdir = join(workspaceDir, "workdir");
-  await Promise.all([
-    mkdir(workspaceDir, { recursive: true }),
-    mkdir(upper, { recursive: true }),
-    mkdir(workdir, { recursive: true }),
-    mkdir(dest, { recursive: true }),
-  ]);
+export const cleanLease = async (vmId: string, conf: VmConfig) => {
+  // first, just unmount and rm -rf the cell if they exist. These commands
+  // should fail if the mountpoints don't exist or the cell doesn't exist,
+  // which is fine. Usually, they will fail assuming the cleanup procedure
+  // works, but in the event that the program closed unexpectedly last time,
+  // this should help to ensure we can create a fresh vm filesystem.
+  const cell = join(conf.jail, "firecracker", vmId);
+  const vmSocks = join(cell, "root", "socks");
+  const vmBase = join(cell, "root", "base");
+  const workCell = join(conf.workspace, vmId);
 
-  await $`mount -t overlay overlay -o lowerdir="${src}",upperdir="${upper}",workdir="${workdir}" ${dest}`;
-  await $`chown -R ${uid}:${gid} ${dest}`;
-  await $`chmod -R ${mode} ${dest}`;
-
-  const destroy = async () => await $`umount -l ${dest}`;
-  return { destroy };
+  await $`umount -l -R ${vmSocks}`.quiet().throws(false);
+  await $`umount -l -R ${vmBase}`.quiet().throws(false);
+  await $`rm -rf ${cell}`.quiet().throws(false);
+  await $`rm -rf ${workCell}`.quiet().throws(false);
 };
 
-export class VmFilesys {
-  _socksDir: string;
-  _baseDir: string;
-  _jailerRoot: string;
-  _workspaceDir: string;
+export const acquireLease = async (vmId: string, conf: VmConfig) => {
+  await cleanLease(vmId, conf);
+  const cell = join(conf.jail, "firecracker", vmId);
+  const vmSocks = join(cell, "root", "socks");
+  const vmBase = join(cell, "root", "base");
+  const workCell = join(conf.workspace, vmId);
+  const upper = join(workCell, "upper");
+  const workdir = join(workCell, "workdir");
 
-  constructor(params: {
-    socksDir: string;
-    baseDir: string;
-    jailerRoot: string;
-    workspaceDir: string;
-  }) {
-    const { socksDir, baseDir, jailerRoot, workspaceDir } = params;
-    this._socksDir = socksDir;
-    this._baseDir = baseDir;
-    this._jailerRoot = jailerRoot;
-    this._workspaceDir = workspaceDir;
+  // throws -- these are required for the mount operations
+  try {
+    await $`mkdir -p ${vmSocks}`.quiet();
+    await $`mkdir -p ${vmBase}`.quiet();
+    await $`mkdir -p ${workCell}`.quiet();
+    await $`mkdir -p ${upper}`.quiet();
+    await $`mkdir -p ${workdir}`.quiet();
+  } catch (e) {
+    await cleanLease(vmId, conf);
+    throw new Error("Failed to create dirs for mountpoints", { cause: e });
   }
 
-  create = async (vmId: string) => {
-    const chroot = join(this._jailerRoot, "firecracker", vmId, "root");
-    const baseDir = join(chroot, "base");
-    const socksDir = join(chroot, "socks");
-    const vmSocks = join(this._socksDir, vmId);
+  try {
+    await $`mount -t overlay overlay -o lowerdir="${conf.base}",upperdir="${upper}",workdir="${workdir}" ${vmBase}`.quiet();
+    await $`mount --bind --map-users 0:${conf.uid}:65534 --map-groups 0:${conf.gid}:65534 ${conf.socks} ${vmSocks}`;
+  } catch (e) {
+    await cleanLease(vmId, conf);
+    throw new Error("Failed to create mountpoints", { cause: e });
+  }
 
-    const { data: overlayData, error: overlayError } = await tryCatch(
-      addOverlay({
-        dest: baseDir,
-        src: this._baseDir,
-        workspaceDir: join(this._workspaceDir, vmId),
-      }),
-    );
-    if (overlayError) {
-      console.log("[ADDOVERLAY ERROR]", overlayError);
-      process.exit(-1);
-    }
+  try {
+    await $`chown -R ${conf.uid}:${conf.gid} ${vmBase}`.quiet();
+    await $`chmod -R 777 ${vmBase}`.quiet();
+  } catch (e) {
+    await cleanLease(vmId, conf);
+    throw new Error("Failed to change owner or mode of vmbase", { cause: e });
+  }
+};
 
-    const { data: bindData, error: bindError } = await tryCatch(
-      addBind({
-        src: vmSocks,
-        dest: socksDir,
-      }),
-    );
-    if (bindError) {
-      console.log("[ADDBIND ERROR]", bindError);
-      await overlayData.destroy();
-      process.exit(-1);
-    }
+export const getSocketPath = async (vmId: string, conf: VmConfig) => {
+  const cell = join(conf.jail, "firecracker", vmId);
+  const vmSocksDir = join(cell, "root", "socks");
+  // the host will start listening on a socket in this directory,
+  // and vmSocks directory will have a mount binding to this dir
+  // with --map-users and --map-groups
+  const hostSocksDir = join(conf.socks, vmId);
 
-    const destroy = async () => {
-      // unmount inner mounts first, then rm the whole chroot tree
-      await bindData.destroy();
-      await overlayData.destroy();
-      await $`rm -rf ${chroot}`;
-    };
-    return { destroy };
-  };
-}
+  // ensure the directories exist
+  await $`mkdir -p ${vmSocksDir}`;
+  await $`mkdir -p ${hostSocksDir}`;
+
+  // firecracker expects us to be listening on a port w/ this name formatting
+  const sockName = `v.sock_${conf.sockPort || 52}`;
+  const sock = join(hostSocksDir, sockName);
+
+  const portExists = fileExists(sock) || fileExists(join(vmSocksDir, sockName));
+  if (portExists) {
+    throw new Error(`Socket ${sockName} already exists for vmId ${vmId}`);
+  }
+
+  return sock;
+};
