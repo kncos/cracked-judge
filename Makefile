@@ -1,124 +1,152 @@
-ROOTFS         := rootfs.ext4
-VMROOT         ?= vmroot
 
-MKOSI_DIR      := mkosi
-MKOSI_FILES    := $(MKOSI_DIR)/mkosi.conf $(MKOSI_DIR)/mkosi.postinst.chroot $(MKOSI_DIR)/mkosi.prepare $(MKOSI_DIR)/mkosi.build
-MKOSI_EXTRA    := $(shell find $(MKOSI_DIR)/mkosi.extra -type f 2>/dev/null | sort)
-MKOSI_DEPS     := $(MKOSI_FILES) $(MKOSI_EXTRA)
+# common directories
+DEST 			?= vmroot
+TMP_DIR 	:= $(shell mktemp -d /tmp/crackedjudge-XXXXXX)
+REPO_DIR 	:= $(TMP_DIR)/repos
+VMBASE 		:= $(DEST)/base
 
-FC_REPO        := https://github.com/firecracker-microvm/firecracker.git
-FC_TAG         := v1.15.0
+# targets
+FIRECRACKER_OUT		:=$(DEST)/firecracker
+JAILER_OUT				:=$(DEST)/jailer
+KERNEL_STAMP_OUT	:=$(VMBASE)/.kernel_stamp
+ROOTFS_OUT				:=$(VMBASE)/rootfs.ext4
+VMCONFIG_OUT			:=$(VMBASE)/vm-config.json
 
-# Final output paths
-FC_BIN         := $(VMROOT)/firecracker
-JAILER_BIN     := $(VMROOT)/jailer
-KERNEL_OUT     := $(VMROOT)/base/vmlinux
-ROOTFS_OUT     := $(VMROOT)/base/$(ROOTFS)
-VMCONFIG_OUT   := $(VMROOT)/base/vm-config.json
+# all silent for this make file
+.SILENT:
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
 
-.PHONY: all clean rebuild rebuild-kernel rebuild-rootfs rebuild-firecracker help vmroot sudo-validate
+# default target
+.PHONY: all
+all: $(KERNEL_STAMP_OUT) $(ROOTFS_OUT) $(VMCONFIG_OUT) binaries cleanup-all-workspaces
 
-all: vmroot
+# firecracker repository stuff. We use a stamp as the target so we can
+# only clone the repo once and allow multiple targets to depend on it
+FC_REPO := https://github.com/firecracker-microvm/firecracker.git
+FC_TAG := v1.15.0
+FC_REPO_DIR := $(REPO_DIR)/firecracker
+FC_REPO_STAMP := $(REPO_DIR)/.fc_repo_stamp
+$(FC_REPO_STAMP):
+	echo "Cloning firecracker repo..."
+	rm -rf $(FC_REPO_DIR)
+	mkdir -p $(FC_REPO_DIR)
+	git clone --depth 1 --branch $(FC_TAG) --progress $(FC_REPO) $(FC_REPO_DIR)/.
+	touch $@
 
-# Cache sudo credentials upfront so builds don't block on password prompt
-sudo-validate:
-	@echo ">>> Validating sudo credentials..."
-	@sudo -v
+# create directory structure where targets end up
+.PHONY: directories
+directories:
+	mkdir -p $(DEST)/base $(DEST)/jail/firecracker $(DEST)/socks $(DEST)/workspace
 
-vmroot: sudo-validate $(FC_BIN) $(JAILER_BIN) $(KERNEL_OUT) $(ROOTFS_OUT) $(VMCONFIG_OUT)
+# kernel version might get bumped, so use a stamp. Kernel ends up in vmbase
+$(KERNEL_STAMP_OUT): | directories $(FC_REPO_STAMP)
+	echo ">>> Starting kernel build"
 
-# ── Directory Structure ───────────────────────────────────────────────────────
-$(VMROOT) $(VMROOT)/base $(VMROOT)/jail/firecracker $(VMROOT)/socks $(VMROOT)/workspace:
-	mkdir -p $@
+	# true because this returns non-zero even though it succeeds.. for some reason	
+	time $(FC_REPO_DIR)/tools/devtool build_ci_artifacts kernels 6.1 || true
+	echo ">>> KERNEL BUILD FINISHED. see time above"
 
-# ── Shared Workdir Helper ─────────────────────────────────────────────────────
-# Usage: $(call clone_fc_repo,<workdir>)
-define clone_fc_repo
-	git clone --depth 1 --branch $(FC_TAG) --progress $(FC_REPO) $(1)/firecracker 2>&1
-endef
+	cp $(FC_REPO_DIR)/resources/x86_64/vmlinux-6.1.* $(VMBASE)
+	touch $(KERNEL_STAMP_OUT)
 
-# ── Kernel ────────────────────────────────────────────────────────────────────
-# Note: devtool builds to resources/x86_64/ (release) and resources/x86_64/debug/
-# devtool uses Docker which creates root-owned files, so cleanup needs sudo
-$(KERNEL_OUT): | $(VMROOT)/base
-	@echo ">>> Starting kernel build"
-	WORKDIR=$$(mktemp -d /tmp/firecracker-build-XXXXXXXX); \
-	$(call clone_fc_repo,$$WORKDIR) && \
-	cd $$WORKDIR/firecracker && \
-	  stdbuf -oL -eL ./tools/devtool build_ci_artifacts kernels 6.1 2>&1 | \
-	    stdbuf -oL sed 's/^/[devtool] /'; \
-	echo ">>> Copying kernel..."; \
-	cp $$WORKDIR/firecracker/resources/x86_64/vmlinux-6.1.* $(VMROOT)/base/; \
-	sudo rm -rf $$WORKDIR; \
-	echo ">>> Kernel build complete"
+.PHONY: kernel
+kernel: $(KERNEL_STAMP_OUT)
 
-# ── Firecracker + Jailer ──────────────────────────────────────────────────────
-# Build both binaries together; each file target checks if rebuild is needed.
-# devtool uses Docker which creates root-owned files, so cleanup needs sudo
-$(FC_BIN) $(JAILER_BIN): | $(VMROOT)
-	@if [ -f $(FC_BIN) ] && [ -f $(JAILER_BIN) ]; then \
-	  echo ">>> Firecracker/jailer already exist"; \
-	else \
-	  echo ">>> Starting firecracker/jailer build"; \
-	  WORKDIR=$$(mktemp -d /tmp/firecracker-build-XXXXXXXX); \
-	  $(call clone_fc_repo,$$WORKDIR); \
-	  cd $$WORKDIR/firecracker && \
-	    stdbuf -oL -eL ./tools/devtool build --release 2>&1 | \
-	      stdbuf -oL sed 's/^/[devtool] /'; \
-	  cp $$(find $$WORKDIR/firecracker/build -path '*/release/firecracker' -type f) $(FC_BIN); \
-	  cp $$(find $$WORKDIR/firecracker/build -path '*/release/jailer' -type f) $(JAILER_BIN); \
-	  sudo rm -rf $$WORKDIR; \
-	  echo ">>> Firecracker/jailer build complete"; \
+# builds the firecracker and jailer binaries. & syntax means we only run 
+# the recipe once but can call both/either, these builds are coupled
+$(FIRECRACKER_OUT) $(JAILER_OUT) &: | directories $(FC_REPO_STAMP)
+	echo ">>> Starting firecracker and jailer binary builds"
+	time $(FC_REPO_DIR)/tools/devtool build --release 1>/dev/null
+	echo ">>> FIRECRACKER & JAILER FINISHED. see time above"
+
+	if ! cp $(FC_REPO_DIR)/build/cargo_target/*/release/jailer -t $(DEST); then \
+		echo ">>> Failed to copy jailer binary? attempted to copy these:"; \
+		find $(FC_REPO_DIR) -type f -name "jailer" | sed 's/^/  /'; \
+	fi
+	if ! cp $(FC_REPO_DIR)/build/cargo_target/*/release/firecracker -t $(DEST); then \
+		echo ">>> Failed to copy firecracker binary? attempted to copy these:"; \
+		find $(FC_REPO_DIR) -type f -name "firecracker" | sed 's/^/  /'; \
 	fi
 
-# ── RootFS ────────────────────────────────────────────────────────────────────
-MKOSI_CACHE := $(MKOSI_DIR)/mkosi.cache
+# convenience target
+.PHONY: binaries
+binaries: $(FIRECRACKER_OUT) $(JAILER_OUT)
 
-$(MKOSI_CACHE):
-	mkdir -p $@
+MKOSI_DIR      := mkosi
+MKOSI_FILES    := $(shell find $(MKOSI_DIR) -maxdepth 1 -type f 2>/dev/null | sort)
+MKOSI_EXTRA    := $(shell find $(MKOSI_DIR)/mkosi.extra -type f 2>/dev/null | sort)
+MKOSI_DEPS     := $(MKOSI_FILES) $(MKOSI_EXTRA)
+MKOSI_CACHE    := $(MKOSI_DIR)/mkosi.cache
 
-$(MKOSI_DIR)/mkosi.output/image: $(MKOSI_DEPS) | $(MKOSI_CACHE)
-	@echo ">>> Building rootfs via mkosi"
-	rm -rf $(MKOSI_DIR)/mkosi.output/
-	cd $(MKOSI_DIR) && unshare --map-auto --map-root-user mkosi build --cache-dir mkosi.cache
-	@echo ">>> Rootfs image built"
+$(ROOTFS_OUT): | directories
+	mkdir -p $(MKOSI_CACHE)
+	time (pushd $(MKOSI_DIR) && \
+	mkosi build && \
+	popd && \
+	truncate -s 8G $@ && \
+	unshare --map-auto --map-root-user mkfs.ext4 -F -d $(MKOSI_DIR)/mkosi.output/image $@ && \
+	rm -rf mkosi.output/)
+	echo ">>> Rootfs image built"
 
-$(ROOTFS_OUT): $(MKOSI_DIR)/mkosi.output/image | $(VMROOT)/base
-	@echo ">>> Packing ext4 image"
-	truncate -s 2G $@
-	unshare --map-auto --map-root-user mkfs.ext4 -F -d $(MKOSI_DIR)/mkosi.output/image $@
-	rm -rf $(MKOSI_DIR)/mkosi.output/
-	@echo ">>> RootFS build complete"
+.PHONY: rootfs
+rootfs: $(ROOTFS_OUT)
 
-# ── VM Config ─────────────────────────────────────────────────────────────────
-$(VMCONFIG_OUT): | $(VMROOT)/base
-	@echo ">>> Copying vm-config.json"
-	cp vm-config.json $@
+$(VMCONFIG_OUT):
+	echo ">>> Copying vm-config.json"
 
-# ── Convenience targets ───────────────────────────────────────────────────────
-rebuild: sudo-validate rebuild-kernel rebuild-rootfs rebuild-firecracker
+	(cp "vm-config.json" "$@") || \
+		(echo "Failed to copy vm-config.json" && false); 
 
-rebuild-kernel: sudo-validate
-	rm -f $(KERNEL_OUT)
-	$(MAKE) $(KERNEL_OUT)
 
-rebuild-rootfs: sudo-validate
+.PHONY: vmconfig
+vmconfig: $(VMCONFIG_OUT)
+
+.PHONY: vmroot
+vmroot: all 
+
+.PHONY: rebuild
+rebuild: cleanup-all-workspaces rebuild-kernel rebuild-rootfs rebuild-binaries
+
+.PHONY: rebuild-kernel
+rebuild-kernel:
+	rm -f $(VMBASE)/vmlinux* $(KERNEL_STAMP_OUT)
+	$(MAKE) $(KERNEL_STAMP_OUT)
+
+.PHONY: rebuild-rootfs
+rebuild-rootfs:
 	rm -f $(ROOTFS_OUT)
 	$(MAKE) $(ROOTFS_OUT)
 
-rebuild-firecracker: sudo-validate
-	rm -f $(FC_BIN) $(JAILER_BIN)
-	$(MAKE) $(FC_BIN) $(JAILER_BIN)
+.PHONY: rebuild-binaries
+rebuild-binaries:
+	rm -f $(FIRECRACKER_OUT) $(JAILER_OUT)
+	$(MAKE) binaries
 
-clean:
-	rm -rf $(VMROOT) $(MKOSI_DIR)/mkosi.output/ $(MKOSI_DIR)/mkosi.cache/
-	sudo rm -rf /tmp/firecracker-build-*/
+.PHONY: clean
+clean: | cleanup-all-workspaces
+	sudo rm -rf $(DEST) $(MKOSI_DIR)/mkosi.output
+
+.PHONY: cleanup
+cleanup-all-workspaces:
+	(find /tmp/ -name 'crackedjudge-*' -type d 2>/dev/null | sort | sed 's/^/[REMOVING] /') || true
+	(sudo /bin/bash -c "find /tmp/ -name 'crackedjudge-*' -type d 2>/dev/null | sort | xargs rm -rf;") || \
+		echo "Failed to remove directories, maybe you need sudo?"
 
 help:
-	@echo "Targets:"
-	@echo "  all                  Build everything (default)"
-	@echo "  rebuild              Force rebuild everything"
-	@echo "  rebuild-kernel       Force kernel rebuild only"
-	@echo "  rebuild-rootfs       Force rootfs rebuild only"
-	@echo "  rebuild-firecracker  Force firecracker + jailer rebuild"
-	@echo "  clean                Remove all build artifacts"
+	rm -rf $(TMP_DIR)
+	echo "Targets:"
+	echo "  help                 Show this help message"
+	echo "  all                  Build everything (default)"
+	echo "  clean                Remove all build artifacts"
+	echo "  clean-workspaces     Remove all workspace directories"
+	echo "  kernel 							 build the microvm kernel"
+	echo "  rootfs 							 build the microvm rootfs.ext4"
+	echo "  vmconfig             copy vm-config.json to its destination"
+	echo "  binaries             build the firecracker and jailer binaries"
+	echo "  directories          make empty directory structure for vmroot if it doesn't exist"
+	echo "  rebuild              Force rebuild everything"
+	echo "  rebuild-kernel       Force kernel rebuild only"
+	echo "  rebuild-rootfs       Force rootfs rebuild only"
+	echo "  rebuild-binaries Force firecracker + jailer rebuild"
+
