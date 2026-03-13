@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { VmConfig } from "./vm";
-import { VM } from "./vm/vm";
+import { VmOrchestrator } from "./vm/orchestrator";
 
 const vmroot = "/tmp/vmroot";
 
@@ -15,6 +15,10 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
-await using vm0 = await VM.create("vm0", conf);
+await using pool = new VmOrchestrator(conf);
+for (let i = 0; i < 16; i++) {
+  const id = await pool.spawnVm();
+  console.log(`Spawned VM with ID: ${id}`);
+}
 
 await Bun.sleep(10000);
