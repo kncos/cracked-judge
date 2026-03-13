@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { join } from "node:path";
-import { type VmConfig } from "../utils";
+import { type VmConfig } from ".";
 
 export class VmFilesystem implements AsyncDisposable {
   private constructor(

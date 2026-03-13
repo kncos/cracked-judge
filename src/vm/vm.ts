@@ -1,4 +1,4 @@
-import type { VmConfig } from "../utils";
+import type { VmConfig } from ".";
 import { VmFilesystem } from "./filesys";
 import { VmSocketListener } from "./socket";
 

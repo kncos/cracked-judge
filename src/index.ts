@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { VmConfig } from "./utils";
+import type { VmConfig } from "./vm";
 import { VM } from "./vm/vm";
 
 const vmroot = "/tmp/vmroot";
@@ -15,6 +15,6 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
-const vm0 = await VM.create("vm0", conf);
+await using vm0 = await VM.create("vm0", conf);
 
 await Bun.sleep(10000);
