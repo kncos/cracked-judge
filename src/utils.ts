@@ -25,5 +25,18 @@ export async function tryCatch<T, E = Error>(
   }
 }
 
+export type VmConfig = {
+  jail: string;
+  base: string;
+  socks: string;
+  workspace: string;
+  sockPort?: string;
+  uid: string;
+  gid: string;
+  // mode?: string;
+  jailerBinary: string;
+  firecrackerBinary: string;
+};
+
 export const fileExists = (path: string) =>
   statSync(path, { throwIfNoEntry: false }) !== undefined;
