@@ -16,7 +16,7 @@ const conf: VmConfig = {
 };
 
 await using pool = new VmOrchestrator(conf);
-for (let i = 0; i < 16; i++) {
+for (let i = 0; i < 8; i++) {
   const id = await pool.spawnVm();
   console.log(`Spawned VM with ID: ${id}`);
 }
