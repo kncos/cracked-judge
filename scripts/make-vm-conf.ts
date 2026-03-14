@@ -1,52 +1,90 @@
-import path from "path";
-import { Path } from "typescript";
+import fs from "node:fs";
+import path from "node:path";
 import { parseArgs } from "util";
 
-const { values, positionals } = parseArgs({
-  args: Bun.argv,
-  options: {
-    "kernel-path": {
-      type: "string",
-      short: "k",
-      multiple: false,
-    },
-    "rootfs-path": {
-      type: "string",
-      short: "r",
-      multiple: false,
-    },
-    "output-dir": {
-      type: "string",
-      short: "o",
-      multiple: false,
-    },
-  },
-  strict: true,
-  allowPositionals: false,
-});
+const printHelp = () => {
+  // --kernel-name and --output-name options
+  const lines = [
+    `  -k  --kernel-name    File name of the kernel image not a path, literal name`,
+    `  -o  --output-path    Output path for the VM configuration file include name`,
+    `  -h  --help           print this menu`,
+  ];
+  console.log(lines.join("\n"));
+};
 
-const pathHelper = (input: string | Path | undefined, arg: string) => {
-  if (!input) {
-    console.error(`Please provide a path using the ${arg} option`);
-    process.exit(-1);
-  }
-  try {
-    const resolved = path.resolve(input);
-    if (!path.isAbsolute(input)) {
-      console.warn(`Path provided was relative. Resolved to ${resolved}`);
-    }
-    return resolved;
-  } catch (e) {
-    console.error(
-      `Path provided was invalid or unexpected. Received ${input}`,
-      `  Error: ${(e as Error)?.message || e}`,
-    );
-    process.exit(-1);
-  }
+const baseConf = {
+  "boot-source": {
+    kernel_image_path: "base/vmlinux-6.1.164",
+    boot_args:
+      "reboot=k panic=1 pci=off nomodule root=/dev/vda rw init=/sbin/busybox init",
+  },
+  drives: [
+    {
+      drive_id: "rootfs",
+      path_on_host: "base/rootfs.ext4",
+      is_root_device: true,
+      is_read_only: false,
+    },
+  ],
+  "machine-config": {
+    vcpu_count: 1,
+    mem_size_mib: 1024,
+  },
+  vsock: {
+    guest_cid: 3,
+    uds_path: "./socks/v.sock",
+  },
 };
 
 const main = () => {
-  const kernelPath = pathHelper(values["kernel-path"], "kernel-path");
-  const outputPath = pathHelper(values["output-dir"], "output-dir");
-  const rootfsPath = pathHelper(values["rootfs-path"], "rootfs-path");
+  const { values, positionals } = parseArgs({
+    args: Bun.argv,
+    options: {
+      "kernel-name": {
+        type: "string",
+        short: "k",
+        multiple: false,
+      },
+      "output-path": {
+        type: "string",
+        short: "o",
+        multiple: false,
+      },
+    },
+    strict: true,
+    allowPositionals: true,
+  });
+
+  const kname = values["kernel-name"];
+  if (!kname || !kname.trim()) {
+    printHelp();
+    console.error("Kernel name not provided. Need the file name (not a path)");
+    process.exit(-1);
+  }
+  const newConf = JSON.stringify(
+    {
+      ...baseConf,
+      "boot-source": {
+        ...baseConf["boot-source"],
+        kernel_image_path: `base/${kname}`,
+      },
+    },
+    null,
+    2,
+  );
+
+  const output = values["output-path"] || "./vm-config.json";
+  try {
+    // const outPath = path.resolve(output);
+    fs.mkdirSync(path.dirname(output), { recursive: true });
+    fs.writeFileSync(output, `${newConf}\n`); // end with newline
+  } catch (err) {
+    printHelp();
+    console.error(`Failed to write to ${output}: ${err}`);
+    console.error("This could be because you gave an invalid path.");
+    console.error("or the default resolved path was unexpected.");
+    console.error(`FAILED TO WRITE: ${output}`);
+  }
 };
+
+main();

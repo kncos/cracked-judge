@@ -10,7 +10,6 @@ FIRECRACKER_OUT		:=$(DEST)/firecracker
 JAILER_OUT				:=$(DEST)/jailer
 KERNEL_STAMP_OUT	:=$(VMBASE)/.kernel_stamp
 ROOTFS_OUT				:=$(VMBASE)/rootfs.ext4
-VMCONFIG_OUT			:=$(VMBASE)/vm-config.json
 
 # all silent for this make file
 .SILENT:
@@ -19,7 +18,7 @@ SHELL := /bin/bash
 
 # default target
 .PHONY: all
-all: $(KERNEL_STAMP_OUT) $(ROOTFS_OUT) $(VMCONFIG_OUT) binaries cleanup-all-workspaces
+all: $(KERNEL_STAMP_OUT) $(ROOTFS_OUT) binaries cleanup-all-workspaces
 
 # firecracker repository stuff. We use a stamp as the target so we can
 # only clone the repo once and allow multiple targets to depend on it
@@ -48,6 +47,11 @@ $(KERNEL_STAMP_OUT): | directories $(FC_REPO_STAMP)
 	echo ">>> KERNEL BUILD FINISHED. see time above"
 
 	cp $(FC_REPO_DIR)/resources/x86_64/vmlinux-6.1.* $(VMBASE)
+	KERNEL_NAME=$$(ls $(VMBASE)/vmlinux-6.1.* | grep -v "config" | head -n 1 | xargs basename) && \
+	  echo "Kernel that was built: $${KERNEL_NAME}" && \
+		echo "Building vmconfig that points to kernel: base/$${KERNEL_NAME}" && \
+		bun run scripts/make-vm-conf.ts -k "$${KERNEL_NAME}" -o "$(VMBASE)/vm-config.json" && \
+		echo "Wrote vm config to: $(VMBASE)/vm-config.json"
 	touch $(KERNEL_STAMP_OUT)
 
 .PHONY: kernel
@@ -92,16 +96,6 @@ $(ROOTFS_OUT): | directories
 
 .PHONY: rootfs
 rootfs: $(ROOTFS_OUT)
-
-$(VMCONFIG_OUT):
-	echo ">>> Copying vm-config.json"
-
-	(cp "vm-config.json" "$@") || \
-		(echo "Failed to copy vm-config.json" && false); 
-
-
-.PHONY: vmconfig
-vmconfig: $(VMCONFIG_OUT)
 
 .PHONY: vmroot
 vmroot: all 
