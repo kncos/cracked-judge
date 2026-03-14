@@ -82,11 +82,12 @@ MKOSI_CACHE    := $(MKOSI_DIR)/mkosi.cache
 $(ROOTFS_OUT): | directories
 	mkdir -p $(MKOSI_CACHE)
 	time (pushd $(MKOSI_DIR) && \
-	mkosi build && \
+	mkosi build --force && \
 	popd && \
 	truncate -s 8G $@ && \
 	unshare --map-auto --map-root-user mkfs.ext4 -F -d $(MKOSI_DIR)/mkosi.output/image $@ && \
-	rm -rf mkosi.output/)
+	rm -rf $(MKOSI_DIR)/mkosi.output/ && \
+	chmod 777 $@)
 	echo ">>> Rootfs image built"
 
 .PHONY: rootfs
@@ -115,6 +116,7 @@ rebuild-kernel:
 
 .PHONY: rebuild-rootfs
 rebuild-rootfs:
+	sudo rm -rf $(MKOSI_DIR)/mkosi.output
 	rm -f $(ROOTFS_OUT)
 	$(MAKE) $(ROOTFS_OUT)
 

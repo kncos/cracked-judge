@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import type { VmConfig } from "./vm";
 import { VmOrchestrator } from "./vm/orchestrator";
 
@@ -15,10 +16,21 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
+// console.log(`--- debug ---`);
+
 await using pool = new VmOrchestrator(conf);
 for (let i = 0; i < 8; i++) {
-  const id = await pool.spawnVm();
+  const id = await pool.spawnVm(`vm${i}`);
   console.log(`Spawned VM with ID: ${id}`);
 }
 
-await Bun.sleep(10000);
+const rl = createInterface({
+  input: process.stdin,
+});
+
+for await (const line of rl) {
+  if (line.trim() === "exit") {
+    rl.close();
+    break;
+  }
+}

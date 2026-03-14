@@ -9,6 +9,9 @@ export class VmSocketListener implements AsyncDisposable {
 
   static create = async (vmfs: VmFilesystem): Promise<VmSocketListener> => {
     const socketPath = vmfs.guestInitiatedSocketPath;
+    console.log(`Creating listener on ${socketPath}`);
+    // do this first to clean up any stale socket that might be here
+    await this.rmSocketPath(vmfs);
     const prefix = vmfs.vmId;
     try {
       const server = Bun.listen<{ buf: string }>({
@@ -53,6 +56,7 @@ export class VmSocketListener implements AsyncDisposable {
 
   destroy = async () => {
     this.server.stop();
+    console.log(`shutting down listener for ${this.vmfs.vmId}`);
     await VmSocketListener.rmSocketPath(this.vmfs);
   };
 

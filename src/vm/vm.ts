@@ -1,3 +1,4 @@
+import { join } from "path";
 import type { VmConfig } from ".";
 import { VmFilesystem } from "./filesys";
 import { VmSocketListener } from "./socket";
@@ -13,23 +14,31 @@ export class VM implements AsyncDisposable {
   ) {}
 
   private static spawnProcess = (vmId: string, vmConf: VmConfig) => {
-    return Bun.spawn([
-      vmConf.jailerBinary,
-      "--exec-file",
-      vmConf.firecrackerBinary,
-      "--uid",
-      vmConf.uid,
-      "--gid",
-      vmConf.gid,
-      "--id",
-      vmId,
-      "--chroot-base-dir",
-      vmConf.jail,
-      "--",
-      "--config-file",
-      // we'll always use an overlayfs to bind to chroot/base for the vm
-      "base/vm-config.json",
-    ]);
+    const confFilePath = join("base/", "vm-config.json");
+    console.log(`Using vm-config.json at: ${confFilePath}`);
+    return Bun.spawn(
+      [
+        vmConf.jailerBinary,
+        "--exec-file",
+        vmConf.firecrackerBinary,
+        "--uid",
+        vmConf.uid,
+        "--gid",
+        vmConf.gid,
+        "--id",
+        vmId,
+        "--chroot-base-dir",
+        vmConf.jail,
+        "--",
+        "--config-file",
+        // we'll always use an overlayfs to bind to chroot/base for the vm
+        confFilePath,
+      ],
+      {
+        stderr: "inherit",
+        stdout: "inherit",
+      },
+    );
   };
 
   static create = async (vmId: string, vmConf: VmConfig): Promise<VM> => {
@@ -39,6 +48,8 @@ export class VM implements AsyncDisposable {
       stack.use(fs);
       const listener = await VmSocketListener.create(fs);
       stack.use(listener);
+      // console.log("printing tree");
+      // await $`pwd`.nothrow();
       const proc = VM.spawnProcess(vmId, vmConf);
       const vm = new VM(vmId, vmConf, proc, stack.move());
       return vm;
