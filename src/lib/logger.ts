@@ -47,8 +47,8 @@ export const registerProcess = (params: {
       logger.error(`Process exited with code ${exitCode}.`);
     }
     const resource = proc.resourceUsage();
-    if (resource) {
-      logger.error("Resource usage unavailable!");
+    if (resource === undefined || Object.keys(resource).length === 0) {
+      logger.warn("Resource usage unavailable!");
     } else {
       logger.debug(resource, "Resource usage:");
     }
