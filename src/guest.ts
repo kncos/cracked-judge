@@ -1,18 +1,24 @@
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/websocket";
 import { type RouterClient } from "@orpc/server";
-import { router } from "./router";
+import type { AppRouter } from "./router";
 
-// The client doesn't inject any context — context is server-side only.
+// The guest client doesn't inject any context — context is server-side only.
 type ClientContext = Record<never, never>;
 
-const websocket = new WebSocket("ws://localhost:3000");
-
 const link = new RPCLink<ClientContext>({
-  websocket,
+  websocket: new WebSocket("ws://localhost:3000"),
 });
 
 const client = createORPCClient(link) as unknown as RouterClient<
-  typeof router,
+  AppRouter,
   ClientContext
 >;
+
+const main = async () => {
+  while (true) {
+    // ...
+  }
+};
+
+main();

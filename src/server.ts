@@ -1,25 +1,48 @@
-import { onError } from '@orpc/server';
-import { RPCHandler } from '@orpc/server/node';
-import { CORSPlugin } from '@orpc/server/plugins';
-import { createServer } from 'node:http';
-import { router } from './router';
+import { onError } from "@orpc/server";
+import { RPCHandler } from "@orpc/server/bun-ws";
+import { logger } from "./lib/logger";
+import { router, type VmContext } from "./router";
 
-const handler = new RPCHandler(router, {
-  plugins: [new CORSPlugin()],
-  interceptors: [
-    onError((error) => {
-      console.error(error);
-    }),
-  ],
-});
-
-export const server = createServer(async (req, res) => {
-  const result = await handler.handle(req, res, {
-    context: { headers: req.headers },
+export const createHostServer = (params: {
+  socketPath: string;
+  vmId: string;
+}) => {
+  const { socketPath, vmId } = params;
+  const serverLogger = logger.child(
+    { vmId, socketPath },
+    { msgPrefix: "[Host Server] " },
+  );
+  const handler = new RPCHandler(router, {
+    interceptors: [
+      onError((error) => {
+        serverLogger.error(error, "RPC Error occurred");
+      }),
+    ],
   });
 
-  if (!result.matched) {
-    res.statusCode = 404;
-    res.end('No procedure matched');
-  }
-});
+  const server: Bun.Server<VmContext> = Bun.serve({
+    fetch(req, server) {
+      if (server.upgrade(req, { data: { vmId } })) {
+        return;
+      }
+
+      return new Response("Upgrade failed", { status: 500 });
+    },
+    websocket: {
+      message(ws, message) {
+        handler.message(ws, message, {
+          context: { vmId: ws.data.vmId },
+        });
+      },
+      close(ws) {
+        handler.close(ws);
+        serverLogger.trace("WebSocket connection closed");
+      },
+      open(ws) {
+        serverLogger.trace("WebSocket connection opened");
+      },
+    },
+    unix: socketPath,
+  });
+  return server;
+};
