@@ -4,10 +4,20 @@ import {
 } from "@/lib/firecracker-api";
 import { logger, registerProcess } from "@/lib/logger";
 import { join } from "path";
-import type pino from "pino";
 import type { VmConfig } from ".";
 import { VmFilesystem } from "./filesys";
 import { VmSocketListener } from "./socket";
+
+const getLogger = (vmId: string) => {
+  const vmLogger = logger.child(
+    {
+      vmId,
+      comment: "VM created w/ bun.spawn",
+    },
+    { msgPrefix: `[${vmId}] ` },
+  );
+  return vmLogger;
+};
 
 export class VM implements AsyncDisposable {
   //private stack: AsyncDisposableStack;
@@ -17,13 +27,14 @@ export class VM implements AsyncDisposable {
     public readonly vmConf: VmConfig,
     private proc: ReturnType<typeof VM.spawnProcess>,
     public readonly apiClient: FirecrackerClient,
-    private vmLogger: pino.Logger,
     private stack: AsyncDisposableStack,
   ) {}
 
   private static spawnProcess = (vmId: string, vmConf: VmConfig) => {
     const confFilePath = join("base/", "vm-config.json");
-    console.log(`Using vm-config.json at: ${confFilePath}`);
+    const vmLogger = getLogger(vmId);
+    vmLogger.debug(`using config file ${confFilePath}`);
+
     const proc = Bun.spawn(
       [
         vmConf.jailerBinary,
@@ -47,6 +58,11 @@ export class VM implements AsyncDisposable {
         stderr: "pipe",
       },
     );
+    // ongoing background process that pipes stdout/stderr to our logger
+    registerProcess({
+      proc,
+      logger: vmLogger,
+    });
     return proc;
   };
 
@@ -57,25 +73,16 @@ export class VM implements AsyncDisposable {
       stack.use(fs);
       const listener = await VmSocketListener.create(fs);
       stack.use(listener);
-      // console.log("printing tree");
-      // await $`pwd`.nothrow();
+
       const proc = VM.spawnProcess(vmId, vmConf);
-      const vmLogger = logger.child(
-        {
-          vmId,
-          procPid: proc.pid,
-          comment: "VM created w/ bun.spawn",
-        },
-        { msgPrefix: `[${vmId}] ` },
-      );
-      registerProcess({ proc, logger: vmLogger });
+      const vmLogger = getLogger(vmId).child({ procPid: proc.pid });
       const api = createFirecrackerClient({
         socket: fs.firecrackerApiSocketPath,
         vmId: vmId,
         fcLogger: vmLogger,
       });
 
-      const vm = new VM(vmId, vmConf, proc, api, vmLogger, stack.move());
+      const vm = new VM(vmId, vmConf, proc, api, stack.move());
       return vm;
     } catch (e) {
       await stack.disposeAsync();

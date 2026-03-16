@@ -1,18 +1,26 @@
+import { logger } from "@/lib/logger";
 import { $ } from "bun";
+import type pino from "pino";
 import type { VmFilesystem } from "./filesys";
+
+const getLogger = (vmfs: VmFilesystem) => {
+  const prefix = vmfs.vmId;
+  const socketLogger = logger.child({}, { msgPrefix: `[Socket ${prefix}] ` });
+  return socketLogger;
+};
 
 export class VmSocketListener implements AsyncDisposable {
   private constructor(
     private server: Bun.UnixSocketListener<{ buf: string }>,
     private vmfs: VmFilesystem,
+    private socketLogger: pino.Logger,
   ) {}
 
   static create = async (vmfs: VmFilesystem): Promise<VmSocketListener> => {
     const socketPath = vmfs.guestInitiatedSocketPath;
-    console.log(`Creating listener on ${socketPath}`);
     // do this first to clean up any stale socket that might be here
     await this.rmSocketPath(vmfs);
-    const prefix = vmfs.vmId;
+    const socketLogger = getLogger(vmfs);
     try {
       const server = Bun.listen<{ buf: string }>({
         unix: socketPath,
@@ -25,38 +33,52 @@ export class VmSocketListener implements AsyncDisposable {
             const lines = socket.data.buf.split("\n");
             socket.data.buf = lines.pop()!;
             for (const line of lines) {
-              if (line.trim()) console.log(`[${prefix}] ${line}`);
+              // temporarily left in
+              if (line.trim()) console.log(`[${vmfs.vmId}] ${line}`);
             }
           },
           error(_, err) {
-            console.error(`[${prefix}] socket error: `, err);
+            socketLogger.error(`socket error: ${err.message}`);
           },
         },
       });
-      return new VmSocketListener(server, vmfs);
+      return new VmSocketListener(server, vmfs, socketLogger);
     } catch (e) {
       await VmSocketListener.rmSocketPath(vmfs);
-      throw new Error(
-        `[${prefix}] failed to create socket listener at: ${socketPath}`,
-        { cause: e },
+      const text = e instanceof Error ? e.message : "`e` was not an Error type";
+      socketLogger.error(
+        {
+          errorMsg: text,
+          socketPath,
+          vmId: vmfs.vmId,
+        },
+        "Failed to create socket listener",
       );
+      throw e;
     }
   };
 
   private static rmSocketPath = async (vmfs: VmFilesystem) => {
     const socketPath = vmfs.guestInitiatedSocketPath;
-    const prefix = vmfs.vmId;
     const rm = await $`rm -f ${socketPath}`.throws(false).quiet();
+    const socketLogger = getLogger(vmfs);
     if (rm.exitCode !== 0) {
-      console.log(`[${prefix}] rm -f ${socketPath} failed:`);
-      console.log(`stdout: ${new TextDecoder().decode(rm.stdout)}`);
-      console.log(`stderr: ${new TextDecoder().decode(rm.stderr)}`);
+      socketLogger.warn(
+        {
+          socketPath,
+          vmId: vmfs.vmId,
+          cmd: `rm -f ${socketPath}`,
+          stdout: new TextDecoder().decode(rm.stdout),
+          stderr: new TextDecoder().decode(rm.stderr),
+        },
+        "socket file removal operation failed",
+      );
     }
   };
 
   destroy = async () => {
     this.server.stop();
-    console.log(`shutting down listener for ${this.vmfs.vmId}`);
+    this.socketLogger.info(`shutting down listener for ${this.vmfs.vmId}`);
     await VmSocketListener.rmSocketPath(this.vmfs);
   };
 

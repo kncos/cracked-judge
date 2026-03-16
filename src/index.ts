@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { logger } from "./lib/logger";
 import type { VmConfig } from "./vm";
 import { VmOrchestrator } from "./vm/orchestrator";
 
@@ -16,12 +17,10 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
-// console.log(`--- debug ---`);
-
 await using pool = new VmOrchestrator(conf);
 for (let i = 0; i < 1; i++) {
   const id = await pool.spawnVm(`vm${i}`);
-  console.log(`Spawned VM with ID: ${id}`);
+  logger.info(`Spawned VM with id ${id}`);
 }
 
 const rl = createInterface({
