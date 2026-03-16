@@ -36,7 +36,7 @@ $(FC_REPO_STAMP):
 # create directory structure where targets end up
 .PHONY: directories
 directories:
-	mkdir -p $(DEST)/base $(DEST)/jail/firecracker $(DEST)/socks $(DEST)/workspace
+	mkdir -p $(DEST)/base $(DEST)/jail/firecracker $(DEST)/run $(DEST)/workspace
 
 # kernel version might get bumped, so use a stamp. Kernel ends up in vmbase
 $(KERNEL_STAMP_OUT): | directories $(FC_REPO_STAMP)

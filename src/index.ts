@@ -8,7 +8,7 @@ const vmroot = "/tmp/vmroot";
 const conf: VmConfig = {
   jail: join(vmroot, "jail"),
   base: join(vmroot, "base"),
-  socks: join(vmroot, "socks"),
+  socks: join(vmroot, "run"),
   workspace: join(vmroot, "workspace"),
   uid: "60000",
   gid: "60000",
@@ -19,7 +19,7 @@ const conf: VmConfig = {
 // console.log(`--- debug ---`);
 
 await using pool = new VmOrchestrator(conf);
-for (let i = 0; i < 8; i++) {
+for (let i = 0; i < 1; i++) {
   const id = await pool.spawnVm(`vm${i}`);
   console.log(`Spawned VM with ID: ${id}`);
 }

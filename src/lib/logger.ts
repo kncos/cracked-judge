@@ -13,53 +13,44 @@ export const logger = pino({
 
 export const registerProcess = (params: {
   proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
-  label?: string;
+  logger: pino.Logger;
 }) => {
-  const { proc, label = `[PID ${proc.pid}]` } = params;
-
-  const procLogger = logger.child(
-    {
-      procPid: proc.pid || "ERROR: NO PID??",
-      label,
-      comment: "Spawned with bun.spawn",
-    },
-    { msgPrefix: label },
-  );
+  const { proc, logger } = params;
 
   (async () => {
     const decoder = new TextDecoder();
     for await (const chunk of proc.stdout) {
-      procLogger.debug(decoder.decode(chunk, { stream: true }));
+      logger.debug(decoder.decode(chunk, { stream: true }));
     }
 
     const remainder = decoder.decode();
     if (remainder) {
-      procLogger.debug(remainder);
+      logger.debug(remainder);
     }
   })();
   (async () => {
     const decoder = new TextDecoder();
     for await (const chunk of proc.stderr) {
-      procLogger.error(decoder.decode(chunk, { stream: true }));
+      logger.error(decoder.decode(chunk, { stream: true }));
     }
 
     const remainder = decoder.decode();
     if (remainder) {
-      procLogger.error(remainder);
+      logger.error(remainder);
     }
   })();
 
   proc.exited.then((exitCode) => {
     if (exitCode === 0) {
-      procLogger.debug("Process exited successfully with code 0.");
+      logger.debug("Process exited successfully with code 0.");
     } else {
-      procLogger.error(`Process exited with code ${exitCode}.`);
+      logger.error(`Process exited with code ${exitCode}.`);
     }
     const resource = proc.resourceUsage();
     if (resource) {
-      procLogger.error("Resource usage unavailable!");
+      logger.error("Resource usage unavailable!");
     } else {
-      procLogger.debug(resource, "Resource usage:");
+      logger.debug(resource, "Resource usage:");
     }
   });
 };

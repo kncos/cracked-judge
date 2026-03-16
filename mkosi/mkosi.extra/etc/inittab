@@ -6,5 +6,5 @@
 ::respawn:/bin/sh -c 'echo "Hello from guest" | socat - VSOCK-CONNECT:2:52;sleep 3'
 
 # reboot/shutdown
-::ctrlaltdel:/sbin/reboot
+::ctrlaltdel:reboot -f
 ::shutdown:/sbin/halt

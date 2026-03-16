@@ -2,6 +2,16 @@ import { $ } from "bun";
 import { join } from "node:path";
 import { type VmConfig } from ".";
 
+const bindMount = async (params: {
+  uid: string;
+  gid: string;
+  hostDir: string;
+  guestDir: string;
+}) => {
+  const { uid, gid, hostDir, guestDir } = params;
+  await $`mount --bind --map-users 0:${uid}:65534 --map-groups 0:${gid}:65534 ${hostDir} ${guestDir}`.quiet();
+};
+
 export class VmFilesystem implements AsyncDisposable {
   private constructor(
     public readonly vmId: string,
@@ -11,7 +21,7 @@ export class VmFilesystem implements AsyncDisposable {
     this.cell = cell;
     // vmsocks is where the sockets that the vm uses in the
     // chroot directory will be stored
-    this.vmSocks = join(cell, "root", "socks");
+    this.vmSocks = join(cell, "root", "run");
     this.vmBase = join(cell, "root", "base");
     const workCell = join(vmConf.workspace, vmId);
     this.workCell = workCell;
@@ -50,6 +60,10 @@ export class VmFilesystem implements AsyncDisposable {
    */
   get guestInitiatedSocketPath() {
     return join(this.hostSocks, `v.sock_${this.vmConf.sockPort || 52}`);
+  }
+
+  get firecrackerApiSocketPath() {
+    return join(this.hostSocks, `firecracker.socket`);
   }
 
   /**
@@ -104,7 +118,12 @@ export class VmFilesystem implements AsyncDisposable {
       // and for the vm to see the socket in its chroot directory as owned by itself. The mappings allow the VM to
       // have permission to read/write from the socket even though root initializing the connection means the file
       // belongs to root on the hostSocks path.
-      await $`mount --bind --map-users 0:${conf.uid}:65534 --map-groups 0:${conf.gid}:65534 ${vmfs.hostSocks} ${vmfs.vmSocks}`.quiet();
+      //* note: firecracker is now in the same dir
+      await bindMount({
+        ...conf,
+        hostDir: vmfs.hostSocks,
+        guestDir: vmfs.vmSocks,
+      });
     } catch (e) {
       await vmfs.destroy();
       throw new Error("Failed to create mountpoints", { cause: e });

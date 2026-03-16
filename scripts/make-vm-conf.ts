@@ -32,7 +32,7 @@ const baseConf = {
   },
   vsock: {
     guest_cid: 3,
-    uds_path: "./socks/v.sock",
+    uds_path: "./run/v.sock",
   },
 };
 

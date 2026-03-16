@@ -1,5 +1,11 @@
-import { registerProcess } from "@/lib/logger";
+import {
+  createFirecrackerClient,
+  type FirecrackerClient,
+} from "@/lib/firecracker-api";
+import { logger, registerProcess } from "@/lib/logger";
+import { tryCatch } from "@/lib/utils";
 import { join } from "path";
+import type pino from "pino";
 import type { VmConfig } from ".";
 import { VmFilesystem } from "./filesys";
 import { VmSocketListener } from "./socket";
@@ -11,6 +17,8 @@ export class VM implements AsyncDisposable {
     public readonly vmId: string,
     public readonly vmConf: VmConfig,
     private proc: ReturnType<typeof VM.spawnProcess>,
+    public readonly apiClient: FirecrackerClient,
+    private vmLogger: pino.Logger,
     private stack: AsyncDisposableStack,
   ) {}
 
@@ -40,7 +48,6 @@ export class VM implements AsyncDisposable {
         stderr: "pipe",
       },
     );
-    registerProcess({ proc, label: `[${vmId}] ` });
     return proc;
   };
 
@@ -54,7 +61,21 @@ export class VM implements AsyncDisposable {
       // console.log("printing tree");
       // await $`pwd`.nothrow();
       const proc = VM.spawnProcess(vmId, vmConf);
-      const vm = new VM(vmId, vmConf, proc, stack.move());
+      const api = createFirecrackerClient({
+        socket: fs.firecrackerApiSocketPath,
+        vmId: vmId,
+      });
+      const vmLogger = logger.child(
+        {
+          vmId,
+          procPid: proc.pid,
+          comment: "VM created w/ bun.spawn",
+        },
+        { msgPrefix: `[${vmId}] ` },
+      );
+      registerProcess({ proc, logger: vmLogger });
+
+      const vm = new VM(vmId, vmConf, proc, api, vmLogger, stack.move());
       return vm;
     } catch (e) {
       await stack.disposeAsync();
@@ -63,6 +84,43 @@ export class VM implements AsyncDisposable {
   };
 
   destroy = async () => {
+    const context = {
+      action: "SendCtrlAltDelete",
+      target: "Firecracker",
+      vmId: this.vmId,
+      comment: `Sending PUT /actions to FireCracker`,
+    };
+
+    const { data: result, error: actionErr } = await tryCatch(
+      this.apiClient.PUT("/actions", {
+        body: { action_type: "SendCtrlAltDel" },
+      }),
+    );
+
+    await this.apiClient.GET("/vm/config").then(
+      (res) => this.vmLogger.debug(res.data || "no data?"),
+      (err) =>
+        this.vmLogger.error({ ...context, err }, "FAILED TO GET VM CONFIG"),
+    );
+
+    if (actionErr) {
+      this.vmLogger.error(
+        { ...context, err: actionErr },
+        "FAILED TO SEND REQ TO Firecracker",
+      );
+    } else {
+      try {
+        await Promise.race([
+          this.proc.exited,
+          Bun.sleep(5000).then(() => {
+            throw new Error("Timeout on killing Firecracker");
+          }),
+        ]);
+      } catch (error) {
+        this.vmLogger.error((error as Error).message);
+      }
+    }
+
     this.proc.kill();
     await this.proc.exited;
     await this.stack.disposeAsync();
