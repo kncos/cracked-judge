@@ -1,3 +1,4 @@
+import { registerProcess } from "@/lib/logger";
 import { join } from "path";
 import type { VmConfig } from ".";
 import { VmFilesystem } from "./filesys";
@@ -16,7 +17,7 @@ export class VM implements AsyncDisposable {
   private static spawnProcess = (vmId: string, vmConf: VmConfig) => {
     const confFilePath = join("base/", "vm-config.json");
     console.log(`Using vm-config.json at: ${confFilePath}`);
-    return Bun.spawn(
+    const proc = Bun.spawn(
       [
         vmConf.jailerBinary,
         "--exec-file",
@@ -35,10 +36,12 @@ export class VM implements AsyncDisposable {
         confFilePath,
       ],
       {
-        stderr: "inherit",
-        stdout: "inherit",
+        stdout: "pipe",
+        stderr: "pipe",
       },
     );
+    registerProcess({ proc, label: `[${vmId}] ` });
+    return proc;
   };
 
   static create = async (vmId: string, vmConf: VmConfig): Promise<VM> => {
