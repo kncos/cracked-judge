@@ -86,7 +86,7 @@ MKOSI_CACHE    := $(MKOSI_DIR)/mkosi.cache
 $(ROOTFS_OUT): | directories
 	mkdir -p $(MKOSI_CACHE)
 	time (pushd $(MKOSI_DIR) && \
-	mkosi build --force && \
+	mkosi build && \
 	popd && \
 	truncate -s 8G $@ && \
 	unshare --map-auto --map-root-user mkfs.ext4 -F -d $(MKOSI_DIR)/mkosi.output/image $@ && \

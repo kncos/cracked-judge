@@ -11,34 +11,38 @@ export const logger = pino({
   },
 });
 
+const bufferStream = async (
+  stream: ReadableStream<Uint8Array<ArrayBuffer>>,
+  logFunc: (input: string) => void,
+) => {
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for await (const chunk of stream) {
+    buffer += decoder.decode(chunk, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop()!;
+    for (const line of lines) {
+      if (line.length > 0) {
+        logFunc(line);
+      }
+    }
+  }
+
+  buffer += decoder.decode();
+  if (buffer.length > 0) {
+    logFunc(buffer);
+  }
+};
+
 export const registerProcess = (params: {
   proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   logger: pino.Logger;
 }) => {
   const { proc, logger } = params;
 
-  (async () => {
-    const decoder = new TextDecoder();
-    for await (const chunk of proc.stdout) {
-      logger.debug(decoder.decode(chunk, { stream: true }));
-    }
-
-    const remainder = decoder.decode();
-    if (remainder) {
-      logger.debug(remainder);
-    }
-  })();
-  (async () => {
-    const decoder = new TextDecoder();
-    for await (const chunk of proc.stderr) {
-      logger.error(decoder.decode(chunk, { stream: true }));
-    }
-
-    const remainder = decoder.decode();
-    if (remainder) {
-      logger.error(remainder);
-    }
-  })();
+  bufferStream(proc.stdout, (input) => logger.debug(input));
+  bufferStream(proc.stderr, (input) => logger.error(input));
 
   proc.exited.then((exitCode) => {
     if (exitCode === 0) {

@@ -2,6 +2,16 @@
 // src/guest.ts
 var {$ } = globalThis.Bun;
 
+// src/lib/utils.ts
+async function tryCatch(promise) {
+  try {
+    const data = await promise;
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
+}
+
 // node_modules/@orpc/shared/dist/index.mjs
 function resolveMaybeOptionalOptions(rest) {
   return rest[0] ?? {};
@@ -1820,16 +1830,33 @@ var client = createORPCClient(link);
 var main = async () => {
   const decoder = new TextDecoder;
   while (true) {
-    const { jobType, script } = await client.requestJob();
+    console.log("waiting for job...");
+    const { data, error } = await tryCatch(client.requestJob());
+    if (error) {
+      console.error("Error:", error);
+      await Bun.sleep(1000);
+      continue;
+    }
+    const { script } = data;
     const result = await $`${script}`.nothrow();
-    const { action } = await client.submitJob({
+    const { data: submitData, error: submitErr } = await tryCatch(client.submitJob({
       exitCode: result.exitCode,
       stdout: decoder.decode(result.stdout),
       stderr: decoder.decode(result.stderr)
-    });
-    if (action === "die") {
-      await $`reboot -f`;
+    }));
+    if (submitErr) {
+      console.error("Submit error: ", submitErr);
+      await Bun.sleep(1000);
+      continue;
     }
+    const { action } = submitData;
+    if (action === "die") {
+      await $`reboot -f`.nothrow();
+      console.log("Shutting down...");
+      process.exit(0);
+    }
+    await Bun.sleep(1000);
+    console.log("Finishing iteration...");
   }
 };
 await main();

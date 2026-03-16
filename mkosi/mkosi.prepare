@@ -17,14 +17,14 @@
 
 set -eu
 
-install_glaze() {
-  echo ">>> INSTALLING GLAZE"
-  WORKDIR=$(mktemp -d)
-  pushd $WORKDIR >/dev/null
-  git clone --depth 1 --branch v7.2.0 https://github.com/stephenberry/glaze.git
-  cp -r glaze/include/glaze $BUILDROOT/usr/include/
-  popd >/dev/null
-  rm -rf $WORKDIR
-}
+echo ">>> INSTALLING GLAZE"
+WORKDIR=$(mktemp -d)
+pushd $WORKDIR >/dev/null
+git clone --depth 1 --branch v7.2.0 https://github.com/stephenberry/glaze.git
+cp -r glaze/include/glaze $BUILDROOT/usr/include/
+popd >/dev/null
+rm -rf $WORKDIR
 
-install_glaze
+echo ">>> INSTALLING BUN"
+export BUN_INSTALL="$BUILDROOT"
+curl -fsSL https://bun.com/install | bash

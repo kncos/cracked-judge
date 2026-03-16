@@ -1,4 +1,5 @@
 #!/bin/sh
+
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t cgroup2 cgroup2 /sys/fs/cgroup
@@ -22,6 +23,21 @@ else
   echo ">>> ISOLATE ENVIRONMENT PASSES CHECK"
 fi
 
+echo ">>> Checking for guest binary"
+if [ ! -f /app/guest ]; then
+  echo ">>> ERROR: Guest binary not found"
+else
+  echo ">>> Guest binary found!"
+fi
+
+if [ ! -f /sbin/reboot ]; then
+  echo ">>> ERROR: Reboot binary not found"
+else
+  echo ">>> Reboot binary found!"
+fi
+
+find / | grep -i 'bun'
+
 # networking
 # ip link set eth0 up
 # ip addr add 172.16.0.2/24 dev eth0
@@ -29,6 +45,7 @@ fi
 # echo "nameserver 8.8.8.8" > /etc/resolv.conf
 
 /bin/busybox hostname judge-vm
+
 
 # ssh-keygen -A
 # /usr/sbin/sshd

@@ -16,7 +16,7 @@ const baseConf = {
   "boot-source": {
     kernel_image_path: "base/vmlinux-6.1.164",
     boot_args:
-      "reboot=k panic=1 pci=off nomodule root=/dev/vda rw init=/sbin/busybox init",
+      "reboot=k panic=1 console=ttyS0 pci=off nomodule root=/dev/vda rw init=/sbin/busybox init",
   },
   drives: [
     {

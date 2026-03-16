@@ -5,6 +5,7 @@ import { client } from "./orpc/client";
 const main = async () => {
   const decoder = new TextDecoder();
   while (true) {
+    console.log("waiting for job...");
     const { data, error } = await tryCatch(client.requestJob());
     if (error) {
       console.error("Error:", error);
