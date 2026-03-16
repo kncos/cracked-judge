@@ -1,24 +1,41 @@
-import { createORPCClient } from "@orpc/client";
-import { RPCLink } from "@orpc/client/websocket";
-import { type RouterClient } from "@orpc/server";
-import type { AppRouter } from "./router";
-
-// The guest client doesn't inject any context — context is server-side only.
-type ClientContext = Record<never, never>;
-
-const link = new RPCLink<ClientContext>({
-  websocket: new WebSocket("ws://localhost:3000"),
-});
-
-const client = createORPCClient(link) as unknown as RouterClient<
-  AppRouter,
-  ClientContext
->;
+import { $ } from "bun";
+import { tryCatch } from "./lib/utils";
+import { client } from "./orpc/client";
 
 const main = async () => {
+  const decoder = new TextDecoder();
   while (true) {
-    // ...
+    const { data, error } = await tryCatch(client.requestJob());
+    if (error) {
+      console.error("Error:", error);
+      await Bun.sleep(1000);
+      continue;
+    }
+    const { script } = data;
+    const result = await $`${script}`.nothrow();
+    const { data: submitData, error: submitErr } = await tryCatch(
+      client.submitJob({
+        exitCode: result.exitCode,
+        stdout: decoder.decode(result.stdout),
+        stderr: decoder.decode(result.stderr),
+      }),
+    );
+    if (submitErr) {
+      console.error("Submit error: ", submitErr);
+      await Bun.sleep(1000);
+      continue;
+    }
+
+    const { action } = submitData;
+    if (action === "die") {
+      await $`reboot -f`.nothrow();
+      console.log("Shutting down...");
+      process.exit(0);
+    }
+
+    await Bun.sleep(1000);
+    console.log("Finishing iteration...");
   }
 };
 
-main();
+await main();

@@ -1,9 +1,10 @@
 # sysinit
 ::sysinit:/etc/init.d/rcS
+::sysinit:/bin/sh -c "socat TCP-LISTEN:3000,fork,reuseaddr VSOCK-CONNECT:2:52"
 
-# console
 # ttyS0::once:/usr/bin/agetty -L ttyS0 115200 vt100
-::respawn:/bin/sh -c 'echo "Hello from guest" | socat - VSOCK-CONNECT:2:52;sleep 3'
+# ::respawn:/bin/sh -c 'echo "Hello from guest" | socat - VSOCK-CONNECT:2:52;sleep 3'
+# ::respawn:/base/guest
 
 # reboot/shutdown
 ::ctrlaltdel:reboot -f

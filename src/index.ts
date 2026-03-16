@@ -1,3 +1,4 @@
+import Redis from "ioredis";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { logger } from "./lib/logger";
@@ -27,9 +28,25 @@ const rl = createInterface({
   input: process.stdin,
 });
 
+const redis = new Redis();
 for await (const line of rl) {
-  if (line.trim() === "exit") {
+  const segments = line
+    .trim()
+    .split(" ")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  if (segments.length === 0) {
+    continue;
+  }
+
+  if (segments[0] === "exit") {
     rl.close();
     break;
+  } else if (segments[0] === "script" && segments?.[1]) {
+    await redis.lpush("script", segments[1]);
+  } else if (segments[0] === "view") {
+    const res = await redis.lrange("script", 0, -1);
+    console.log(res);
   }
 }
