@@ -2,7 +2,6 @@ import Redis from "ioredis";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { logger } from "./lib/logger";
-import { HostServer } from "./orpc/server";
 import type { VmConfig } from "./vm";
 import { VmOrchestrator } from "./vm/orchestrator";
 
@@ -19,8 +18,6 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
-await using server = HostServer.create();
-
 await using pool = new VmOrchestrator(conf);
 for (let i = 0; i < 3; i++) {
   const id = await pool.spawnVm(`vm${String(i)}`);
@@ -35,8 +32,6 @@ const rl = createInterface({
 const cleanup = async () => {
   logger.info("Cleaning up index.ts redis connection");
   await redis.quit();
-  logger.info("Destroying host server");
-  await server.destroy();
   logger.info("Closing file descriptors");
   rl.close();
   logger.info("Graceful Shutdown: Goodbye");

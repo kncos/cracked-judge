@@ -10,6 +10,7 @@ export type ServerContext = {
   redis: DisposableRedis;
   redisKey: string;
   serverLogger: Logger;
+  openedAt: number;
 };
 
 export class HostServer implements AsyncDisposable {
@@ -48,7 +49,11 @@ export class HostServer implements AsyncDisposable {
           return new Response(msg, { status: 500 });
         }
 
-        if (server.upgrade(req, { data: { redisKey, redis, serverLogger } })) {
+        if (
+          server.upgrade(req, {
+            data: { redisKey, redis, serverLogger, openedAt: Date.now() },
+          })
+        ) {
           return;
         }
         return new Response("Upgrade failed", { status: 500 });
@@ -69,6 +74,9 @@ export class HostServer implements AsyncDisposable {
             const msg = "Error when deallocating redis key during socket close";
             serverLogger.error({ message: error.message }, msg);
           }
+          const closedAt = Date.now();
+          const connTimeMs = closedAt - ws.data.openedAt;
+          serverLogger.debug({ connTimeMs }, "Websocket closed");
 
           handler.close(ws);
         },
