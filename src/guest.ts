@@ -4,7 +4,9 @@ import { client } from "./orpc/client";
 
 const main = async () => {
   const decoder = new TextDecoder();
-  while (true) {
+  let alive = true;
+  while (alive) {
+    await Bun.sleep(1000);
     console.log("waiting for job...");
     const { data, error } = await tryCatch(client.requestJob());
     if (error) {
@@ -30,13 +32,10 @@ const main = async () => {
     const { action } = submitData;
     if (action === "die") {
       console.log("Shutting down...");
-      process.exit(0);
+      alive = false;
     } else {
       console.log("Continuing...");
     }
-
-    await Bun.sleep(1000);
-    console.log("Finishing iteration...");
   }
 };
 

@@ -5,11 +5,18 @@ import { tryCatch } from "./utils";
 
 export class DisposableRedis extends Redis {
   async [Symbol.asyncDispose]() {
-    const { error } = await tryCatch(this.quit());
+    const { error } = await tryCatch(
+      Promise.race([
+        Bun.sleep(2000).then(() => {
+          this.disconnect();
+        }),
+        this.quit(),
+      ]),
+    );
     if (error) {
-      logger.error(
+      logger.warn(
         { errorMsg: error.message },
-        "Error cleaning up redis in async dispose",
+        "Exception while cleaning up redis in async dispose",
       );
     }
   }
@@ -21,14 +28,18 @@ export class RedisRegistry implements AsyncDisposable {
   private map: AsyncDisposableMap<string, DisposableRedis> =
     new AsyncDisposableMap();
 
-  allocate(redisParams: ConstructorParameters<typeof DisposableRedis>) {
+  async allocate() {
     const hash = crypto.randomUUID();
-    this.map.set(hash, new DisposableRedis(...redisParams));
+    await this.map.set(hash, new DisposableRedis());
     return hash;
   }
 
-  deallocate(hash: string) {
-    this.map.delete(hash);
+  async deallocate(hash: string) {
+    await this.map.delete(hash);
+  }
+
+  get(hash: string) {
+    return this.map.get(hash);
   }
 
   async destroy() {

@@ -51,7 +51,7 @@ export class AsyncDisposableMap<
     );
     const errors = (await Promise.allSettled(disposalPromises))
       .filter((r) => r.status === "rejected")
-      .map((r) => r.reason);
+      .map((r) => r.reason as AsyncDisposeError<K>);
     if (errors.length !== 0) {
       throw new MultiAsyncDisposeError(errors);
     }
@@ -86,7 +86,7 @@ export class AsyncDisposableMap<
       // set key anyways but return error
       if (error) {
         this.resources.set(key, value);
-        throw new AsyncDisposeError(key, error as Error);
+        throw new AsyncDisposeError(key, error);
       }
     }
     this.resources.set(key, value);

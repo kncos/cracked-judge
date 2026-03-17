@@ -59,7 +59,7 @@ export class VmFilesystem implements AsyncDisposable {
    * @see {@link https://github.com/firecracker-microvm/firecracker/blob/main/docs/vsock.md#guest-initiated-connections|Guest Initiated Connections}
    */
   get guestInitiatedSocketPath() {
-    return join(this.hostSocks, `v.sock_${this.vmConf.sockPort || 52}`);
+    return join(this.hostSocks, `v.sock_${this.vmConf.sockPort || "52"}`);
   }
 
   get firecrackerApiSocketPath() {

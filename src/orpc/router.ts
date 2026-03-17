@@ -1,45 +1,28 @@
 import { os } from "@orpc/server";
-import Redis from "ioredis";
 import * as z from "zod";
-import { logger } from "../lib/logger";
 import { tryCatch } from "../lib/utils";
+import type { ServerContext } from "./server";
 
 const vmRoute = os
-  .use(async ({ next, context, ...rest }) => {
-    const reqLogger = logger.child(
+  .$context<ServerContext>()
+  .use(async ({ next, context, path }) => {
+    const { serverLogger } = context;
+
+    const start = Date.now();
+    const result = await next();
+    const end = Date.now();
+    serverLogger.info(
       {
-        ...context,
-        path: rest.path.join("/"),
+        timeMs: end - start,
+        endpoint: path.join("/"),
+        redisKey: context.redisKey,
       },
-      { msgPrefix: "[Request] " },
+      "Request Timer",
     );
-    reqLogger.debug("Handling request: added logging middleware");
-
-    return await next({
-      context: {
-        ...context,
-        reqLogger,
-      },
-    });
-  })
-  .use(async ({ next, context, signal, ...rest }) => {
-    const redis = new Redis();
-
-    signal?.addEventListener("abort", () => {
-      context.reqLogger.info("Request aborted, cleaning up redis...");
-      // this is async but i think we can just send it out into the void
-      redis.quit();
-    });
-
-    return await next({
-      context: {
-        ...context,
-        redis,
-      },
-    });
+    return result;
   });
 
-let i = 0;
+const i = 0;
 export const router = {
   requestJob: vmRoute
     .output(
@@ -49,18 +32,18 @@ export const router = {
       }),
     )
     .handler(async ({ context }) => {
-      const { redis, reqLogger } = context;
+      const { redis, serverLogger } = context;
 
       // for now we just assume data is a basic string w/ no chars that need escaped
       const { data, error } = await tryCatch(redis.brpop("script", 0));
 
       if (error) {
-        reqLogger.error("Failed to brpop from redis!");
+        serverLogger.error("Failed to brpop from redis!");
       }
 
       return {
         jobType: "script",
-        script: `/bin/sh -c 'echo "Hello from guest ${i}: ${data || "redis error"}"'`,
+        script: `/bin/sh -c 'echo "Hello from guest ${String(i)}: ${data?.join(" ") || "redis error"}"'`,
       };
     }),
   submitJob: vmRoute
@@ -76,9 +59,9 @@ export const router = {
         action: z.enum(["continue", "die"]),
       }),
     )
-    .handler(async ({ input, context }) => {
-      const { reqLogger } = context;
-      reqLogger.info(input, "Received a job submission");
+    .handler(({ input, context }) => {
+      const { serverLogger } = context;
+      serverLogger.info(input, "Received a job submission");
 
       return {
         action: "continue",

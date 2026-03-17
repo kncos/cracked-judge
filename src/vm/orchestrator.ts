@@ -23,7 +23,7 @@ export class VmOrchestrator implements AsyncDisposable {
     if (error) {
       throw error;
     }
-    this.resources.set(id, data);
+    await this.resources.set(id, data);
     return id;
   };
 

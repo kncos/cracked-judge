@@ -2,7 +2,7 @@ import Redis from "ioredis";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { logger } from "./lib/logger";
-import { createHostServer } from "./orpc/server";
+import { HostServer } from "./orpc/server";
 import type { VmConfig } from "./vm";
 import { VmOrchestrator } from "./vm/orchestrator";
 
@@ -19,11 +19,11 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
-const server = createHostServer();
+await using server = HostServer.create();
 
 await using pool = new VmOrchestrator(conf);
 for (let i = 0; i < 3; i++) {
-  const id = await pool.spawnVm(`vm${i}`);
+  const id = await pool.spawnVm(`vm${String(i)}`);
   logger.info(`Spawned VM with id ${id}`);
 }
 
@@ -33,9 +33,13 @@ const rl = createInterface({
 
 // out here
 const cleanup = async () => {
+  logger.info("Cleaning up index.ts redis connection");
   await redis.quit();
-  server.stop();
+  logger.info("Destroying host server");
+  await server.destroy();
+  logger.info("Closing file descriptors");
   rl.close();
+  logger.info("Graceful Shutdown: Goodbye");
 };
 
 const redis = new Redis();
@@ -53,7 +57,7 @@ for await (const line of rl) {
   if (segments[0] === "exit") {
     await cleanup();
     break;
-  } else if (segments[0] === "script" && segments?.[1]) {
+  } else if (segments[0] === "script" && segments[1]) {
     await redis.lpush("script", segments[1]);
   } else if (segments[0] === "view") {
     const res = await redis.lrange("script", 0, -1);
