@@ -15,16 +15,34 @@ const vmRoute = os
       .child(
         {
           ...context,
-          path: rest.path,
+          path: rest.path.join("/"),
         },
         { msgPrefix: "[Host Server] " },
       )
       .info("Received a request");
 
     return await next();
+  })
+  .use(async ({ next, context, ...rest }) => {
+    return await next({
+      context: {
+        ...context,
+        vmLogger: logger.child(
+          { vmId: context.vmId },
+          { msgPrefix: "[VM Request Ctx]" },
+        ),
+      },
+    });
   });
 
 let i = 0;
+
+//TODO: this doesn't dispose when conn is aborted, add registry
+class DisposableRedis extends Redis {
+  async [Symbol.asyncDispose]() {
+    await this.quit();
+  }
+}
 
 export const router = {
   requestJob: vmRoute
@@ -35,11 +53,11 @@ export const router = {
       }),
     )
     .handler(async ({ context }) => {
-      const redis = new Redis();
+      await using redis = new DisposableRedis();
       // for now we just assume data is a basic string w/ no chars that need escaped
       const { data, error } = await tryCatch(redis.brpop("script", 0));
       if (error) {
-        logger.error({ ...context }, "Failed to brpop from redis!");
+        context.vmLogger.error("Failed to brpop from redis!");
       }
 
       return {
@@ -61,7 +79,7 @@ export const router = {
       }),
     )
     .handler(async ({ input, context }) => {
-      logger.info({ ...context, ...input }, "Received new job submission");
+      context.vmLogger.info({ ...input }, "Received new job submission");
       return {
         action: "continue",
       };

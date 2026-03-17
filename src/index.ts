@@ -2,6 +2,7 @@ import Redis from "ioredis";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { logger } from "./lib/logger";
+import { createHostServer } from "./orpc/server";
 import type { VmConfig } from "./vm";
 import { VmOrchestrator } from "./vm/orchestrator";
 
@@ -18,8 +19,10 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
+const server = createHostServer();
+
 await using pool = new VmOrchestrator(conf);
-for (let i = 0; i < 1; i++) {
+for (let i = 0; i < 3; i++) {
   const id = await pool.spawnVm(`vm${i}`);
   logger.info(`Spawned VM with id ${id}`);
 }
@@ -43,6 +46,7 @@ for await (const line of rl) {
   if (segments[0] === "exit") {
     rl.close();
     await redis.quit();
+    server.stop();
     break;
   } else if (segments[0] === "script" && segments?.[1]) {
     await redis.lpush("script", segments[1]);

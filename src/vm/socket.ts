@@ -1,5 +1,4 @@
 import { logger, registerProcess } from "@/lib/logger";
-import { createHostServer } from "@/orpc/server";
 import { $ } from "bun";
 import type pino from "pino";
 import { VmFilesystem } from "./filesys";
@@ -12,7 +11,6 @@ const getLogger = (vmfs: VmFilesystem) => {
 
 export class VmSocketListener implements AsyncDisposable {
   private constructor(
-    private server: Bun.Server<any>,
     private vmfs: VmFilesystem,
     private socketLogger: pino.Logger,
     private proc: Bun.Subprocess<"ignore", "pipe", "pipe">,
@@ -38,12 +36,7 @@ export class VmSocketListener implements AsyncDisposable {
     registerProcess({ proc, logger: socketLogger });
     // get server to start listening
 
-    const server = createHostServer({
-      socketPath,
-      vmId: vmfs.vmId,
-    });
-
-    return new VmSocketListener(server, vmfs, socketLogger, proc);
+    return new VmSocketListener(vmfs, socketLogger, proc);
   };
 
   private static rmSocketPath = async (vmfs: VmFilesystem) => {
@@ -65,7 +58,6 @@ export class VmSocketListener implements AsyncDisposable {
   };
 
   destroy = async () => {
-    await this.server.stop(true);
     this.proc.kill();
     await VmSocketListener.rmSocketPath(this.vmfs);
     this.socketLogger.info(`shutting down listener for ${this.vmfs.vmId}`);

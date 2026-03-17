@@ -3,15 +3,8 @@ import { RPCHandler } from "@orpc/server/bun-ws";
 import { logger } from "../lib/logger";
 import { router, type VmContext } from "./router";
 
-export const createHostServer = (params: {
-  socketPath: string;
-  vmId: string;
-}) => {
-  const { socketPath, vmId } = params;
-  const serverLogger = logger.child(
-    { vmId, socketPath },
-    { msgPrefix: "[Host Server] " },
-  );
+export const createHostServer = () => {
+  const serverLogger = logger.child({}, { msgPrefix: "[Host Server] " });
   const handler = new RPCHandler(router, {
     interceptors: [
       onError((error) => {
@@ -33,7 +26,7 @@ export const createHostServer = (params: {
   const server: Bun.Server<VmContext> = Bun.serve({
     port: 3000,
     fetch(req, server) {
-      serverLogger.info("received fetch request");
+      const vmId = req.headers.get("VMID") || "anonymous";
 
       if (server.upgrade(req, { data: { vmId } })) {
         return;

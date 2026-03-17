@@ -1,6 +1,5 @@
 import { $ } from "bun";
 import { tryCatch } from "./lib/utils";
-import { client } from "./orpc/client";
 
 const main = async () => {
   const decoder = new TextDecoder();
