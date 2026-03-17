@@ -42,6 +42,7 @@ for await (const line of rl) {
 
   if (segments[0] === "exit") {
     rl.close();
+    await redis.quit();
     break;
   } else if (segments[0] === "script" && segments?.[1]) {
     await redis.lpush("script", segments[1]);

@@ -1,6 +1,6 @@
 import {
-  createFirecrackerClient,
-  type FirecrackerClient,
+    createFirecrackerClient,
+    type FirecrackerClient,
 } from "@/lib/firecracker-api";
 import { logger, registerProcess } from "@/lib/logger";
 import { join } from "path";

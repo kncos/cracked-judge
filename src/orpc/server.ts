@@ -21,6 +21,7 @@ export const createHostServer = (params: {
   });
 
   const server: Bun.Server<VmContext> = Bun.serve({
+    port: 3000,
     fetch(req, server) {
       serverLogger.info("received fetch request");
 
@@ -44,7 +45,6 @@ export const createHostServer = (params: {
         serverLogger.trace("WebSocket connection opened");
       },
     },
-    unix: socketPath,
   });
   return server;
 };

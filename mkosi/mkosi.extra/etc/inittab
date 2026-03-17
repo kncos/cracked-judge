@@ -1,10 +1,10 @@
 # sysinit
 ::sysinit:/etc/init.d/rcS
 
-ttyS0::once:/bin/sh -c "socat TCP-LISTEN:3000,fork,reuseaddr VSOCK-CONNECT:2:52"
+ttyS0::once:/bin/sh -c "sleep 2;socat TCP-LISTEN:3000,fork,reuseaddr VSOCK-CONNECT:2:52"
+ttyS0::once:/bin/sh -c "/bin/bun run app/guest.js;echo 'guest exited: $?'";
 # ttyS0::once:/usr/bin/agetty -L ttyS0 115200 vt100
 # ::respawn:/bin/sh -c 'echo "Hello from guest" | socat - VSOCK-CONNECT:2:52;sleep 3'
-ttyS0::once:/bin/sh -c "/bin/bun run app/guest.js;echo 'guest exited: $?'";
 
 # reboot/shutdown
 ::ctrlaltdel:/sbin/reboot -f
