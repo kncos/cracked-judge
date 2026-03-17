@@ -4,46 +4,42 @@ import * as z from "zod";
 import { logger } from "../lib/logger";
 import { tryCatch } from "../lib/utils";
 
-export type VmContext = {
-  vmId: string;
-};
-
 const vmRoute = os
-  .$context<VmContext>()
   .use(async ({ next, context, ...rest }) => {
-    logger
-      .child(
-        {
-          ...context,
-          path: rest.path.join("/"),
-        },
-        { msgPrefix: "[Host Server] " },
-      )
-      .info("Received a request");
+    const reqLogger = logger.child(
+      {
+        ...context,
+        path: rest.path.join("/"),
+      },
+      { msgPrefix: "[Request] " },
+    );
+    reqLogger.debug("Handling request: added logging middleware");
 
-    return await next();
-  })
-  .use(async ({ next, context, ...rest }) => {
     return await next({
       context: {
         ...context,
-        vmLogger: logger.child(
-          { vmId: context.vmId },
-          { msgPrefix: "[VM Request Ctx]" },
-        ),
+        reqLogger,
+      },
+    });
+  })
+  .use(async ({ next, context, signal, ...rest }) => {
+    const redis = new Redis();
+
+    signal?.addEventListener("abort", () => {
+      context.reqLogger.info("Request aborted, cleaning up redis...");
+      // this is async but i think we can just send it out into the void
+      redis.quit();
+    });
+
+    return await next({
+      context: {
+        ...context,
+        redis,
       },
     });
   });
 
 let i = 0;
-
-//TODO: this doesn't dispose when conn is aborted, add registry
-class DisposableRedis extends Redis {
-  async [Symbol.asyncDispose]() {
-    await this.quit();
-  }
-}
-
 export const router = {
   requestJob: vmRoute
     .output(
@@ -53,11 +49,13 @@ export const router = {
       }),
     )
     .handler(async ({ context }) => {
-      await using redis = new DisposableRedis();
+      const { redis, reqLogger } = context;
+
       // for now we just assume data is a basic string w/ no chars that need escaped
       const { data, error } = await tryCatch(redis.brpop("script", 0));
+
       if (error) {
-        context.vmLogger.error("Failed to brpop from redis!");
+        reqLogger.error("Failed to brpop from redis!");
       }
 
       return {
@@ -79,7 +77,9 @@ export const router = {
       }),
     )
     .handler(async ({ input, context }) => {
-      context.vmLogger.info({ ...input }, "Received new job submission");
+      const { reqLogger } = context;
+      reqLogger.info(input, "Received a job submission");
+
       return {
         action: "continue",
       };

@@ -1,5 +1,6 @@
 import { $ } from "bun";
 import { tryCatch } from "./lib/utils";
+import { client } from "./orpc/client";
 
 const main = async () => {
   const decoder = new TextDecoder();
@@ -15,7 +16,7 @@ const main = async () => {
     const result = await $`echo "${jobType}"`;
     const { data: submitData, error: submitErr } = await tryCatch(
       client.submitJob({
-        exitCode: 230, // just to test for now?
+        exitCode: result.exitCode,
         stdout: decoder.decode(result.stdout),
         stderr: decoder.decode(result.stderr),
       }),

@@ -1840,7 +1840,7 @@ var main = async () => {
     const { jobType } = data;
     const result = await $`echo "${jobType}"`;
     const { data: submitData, error: submitErr } = await tryCatch(client.submitJob({
-      exitCode: 230,
+      exitCode: result.exitCode,
       stdout: decoder.decode(result.stdout),
       stderr: decoder.decode(result.stderr)
     }));

@@ -31,6 +31,13 @@ const rl = createInterface({
   input: process.stdin,
 });
 
+// out here
+const cleanup = async () => {
+  await redis.quit();
+  server.stop();
+  rl.close();
+};
+
 const redis = new Redis();
 for await (const line of rl) {
   const segments = line
@@ -44,9 +51,7 @@ for await (const line of rl) {
   }
 
   if (segments[0] === "exit") {
-    rl.close();
-    await redis.quit();
-    server.stop();
+    await cleanup();
     break;
   } else if (segments[0] === "script" && segments?.[1]) {
     await redis.lpush("script", segments[1]);
@@ -55,3 +60,5 @@ for await (const line of rl) {
     console.log(res);
   }
 }
+
+// process.on("SIGINT", cleanup);
