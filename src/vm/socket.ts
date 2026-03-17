@@ -1,4 +1,5 @@
 import { logger, registerProcess } from "@/lib/logger";
+import { createHostServer } from "@/orpc/server";
 import { $ } from "bun";
 import type pino from "pino";
 import { VmFilesystem } from "./filesys";
@@ -22,11 +23,6 @@ export class VmSocketListener implements AsyncDisposable {
     const socketLogger = getLogger(vmfs);
     // do this first to clean up any stale socket that might be here
     await this.rmSocketPath(vmfs);
-    // get server to start listening
-    // const server = createHostServer({
-    //   socketPath,
-    //   vmId: vmfs.vmId,
-    // });
 
     const cmd = [
       "socat",
@@ -40,38 +36,11 @@ export class VmSocketListener implements AsyncDisposable {
       stderr: "pipe",
     });
     registerProcess({ proc, logger: socketLogger });
+    // get server to start listening
 
-    socketLogger.info({ cmd }, "Socat command used");
-    const server = Bun.serve({
-      port: 3000,
-      fetch(req, server) {
-        socketLogger.info(
-          {
-            url: req.url,
-            headers: Object.fromEntries(req.headers),
-          },
-          "received fetch request",
-        );
-
-        if (server.upgrade(req)) {
-          socketLogger.info({ ...req }, "upgraded connection");
-          return;
-        }
-
-        return new Response("Upgrade failed", { status: 500 });
-      },
-      websocket: {
-        message(ws, message) {
-          socketLogger.info({ message }, "[Server] received message");
-          ws.send("hello from server");
-        },
-        close(ws) {
-          socketLogger.info("WebSocket connection closed");
-        },
-        open(ws) {
-          socketLogger.info("WebSocket connection opened");
-        },
-      },
+    const server = createHostServer({
+      socketPath,
+      vmId: vmfs.vmId,
     });
 
     return new VmSocketListener(server, vmfs, socketLogger, proc);

@@ -12,11 +12,11 @@ const main = async () => {
       await Bun.sleep(1000);
       continue;
     }
-    const { script } = data;
-    const result = await $`${script}`.nothrow();
+    const { jobType } = data;
+    const result = await $`echo "${jobType}"`;
     const { data: submitData, error: submitErr } = await tryCatch(
       client.submitJob({
-        exitCode: result.exitCode,
+        exitCode: 230, // just to test for now?
         stdout: decoder.decode(result.stdout),
         stderr: decoder.decode(result.stderr),
       }),
@@ -29,9 +29,10 @@ const main = async () => {
 
     const { action } = submitData;
     if (action === "die") {
-      await $`reboot -f`.nothrow();
       console.log("Shutting down...");
       process.exit(0);
+    } else {
+      console.log("Continuing...");
     }
 
     await Bun.sleep(1000);

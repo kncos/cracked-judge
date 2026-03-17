@@ -63,7 +63,7 @@ export const router = {
     .handler(async ({ input, context }) => {
       logger.info({ ...context, ...input }, "Received new job submission");
       return {
-        action: "die",
+        action: "continue",
       };
     }),
 };

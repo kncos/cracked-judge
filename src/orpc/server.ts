@@ -17,6 +17,16 @@ export const createHostServer = (params: {
       onError((error) => {
         serverLogger.error(error, "RPC Error occurred");
       }),
+      ({ request, next }) => {
+        request.signal?.addEventListener("abort", () => {
+          serverLogger.info(
+            { url: request.url, method: request.method },
+            "Request aborted",
+          );
+        });
+
+        return next();
+      },
     ],
   });
 

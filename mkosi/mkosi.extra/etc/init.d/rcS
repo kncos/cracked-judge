@@ -26,20 +26,5 @@ fi
 # networking
 ip link set lo up
 ip addr add 127.0.0.1/8 dev lo
-# socat TCP-LISTEN:3000,fork,reuseaddr VSOCK-CONNECT:2:52
 
 /bin/busybox hostname judge-vm
-
-echo ">>> running local network tests"
-# 1. Check if loopback interface exists and its state
-ip link show lo
-# 2. Check if it's actually up
-ip addr show lo
-# 3. Check if you can ping yourself
-ping -c 3 -W 1 127.0.0.1
-# 4. List all network interfaces so we can see what exists
-ip link show
-# 5. Check if socat is actually running at all
-ps aux | grep socat
-# 6. Try to connect to port 3000 directly with a raw tool
-nc -zv localhost 3000 2>&1 || echo "nc failed"
