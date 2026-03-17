@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { HostServer } from "@/orpc/server";
+import { VmServer } from "@/orpc/vm-api/server";
 import type { VmConfig } from ".";
 import {
   AsyncDisposableMap,
@@ -10,9 +10,9 @@ import { VM } from "./vm";
 
 export class VmOrchestrator implements AsyncDisposable {
   private resources: AsyncDisposableMap<string, VM> = new AsyncDisposableMap();
-  private server: HostServer;
+  private server: VmServer;
   public constructor(public readonly conf: VmConfig) {
-    this.server = HostServer.create();
+    this.server = VmServer.create();
   }
 
   spawnVm = async (vmId?: string): Promise<string> => {

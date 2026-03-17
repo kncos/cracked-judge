@@ -1,10 +1,10 @@
 import { os } from "@orpc/server";
 import * as z from "zod";
-import { tryCatch } from "../lib/utils";
-import type { ServerContext } from "./server";
+import { tryCatch } from "../../lib/utils";
+import type { VmServerCtx } from "./server";
 
 const vmRoute = os
-  .$context<ServerContext>()
+  .$context<VmServerCtx>()
   .use(async ({ next, context, path }) => {
     const { serverLogger } = context;
 
@@ -18,7 +18,7 @@ const vmRoute = os
   });
 
 const i = 0;
-export const router = {
+export const vmRouter = {
   requestJob: vmRoute
     .output(
       z.object({
@@ -66,4 +66,4 @@ export const router = {
     }),
 };
 
-export type AppRouter = typeof router;
+export type AppRouter = typeof vmRouter;

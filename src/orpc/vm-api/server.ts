@@ -3,20 +3,20 @@ import { tryCatch } from "@/lib/utils";
 import { onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/bun-ws";
 import type { Logger } from "pino";
-import { logger } from "../lib/logger";
-import { router } from "./router";
+import { logger } from "../../lib/logger";
+import { vmRouter } from "./router";
 
-export type ServerContext = {
+export type VmServerCtx = {
   redis: DisposableRedis;
   redisKey: string;
   serverLogger: Logger;
   openedAt: number;
 };
 
-export class HostServer implements AsyncDisposable {
+export class VmServer implements AsyncDisposable {
   private static port: number = 3000;
   private constructor(
-    private readonly server: Bun.Server<ServerContext>,
+    private readonly server: Bun.Server<VmServerCtx>,
     private readonly redisRegistry: RedisRegistry,
     private readonly serverLogger: Logger,
   ) {}
@@ -24,7 +24,7 @@ export class HostServer implements AsyncDisposable {
   static create = (name: string = "Server") => {
     const registry = new RedisRegistry();
     const serverLogger = logger.child({}, { msgPrefix: `[${name}] ` });
-    const handler = new RPCHandler<ServerContext>(router, {
+    const handler = new RPCHandler<VmServerCtx>(vmRouter, {
       interceptors: [
         onError((error) => {
           serverLogger.error(error, "RPC Error occurred");
@@ -32,8 +32,8 @@ export class HostServer implements AsyncDisposable {
       ],
     });
 
-    const server: Bun.Server<ServerContext> = Bun.serve({
-      port: HostServer.port,
+    const server: Bun.Server<VmServerCtx> = Bun.serve({
+      port: VmServer.port,
       async fetch(req, server) {
         const { data: redisKey, error } = await tryCatch(registry.allocate());
         if (error) {
@@ -83,7 +83,7 @@ export class HostServer implements AsyncDisposable {
       },
     });
 
-    return new HostServer(server, registry, serverLogger);
+    return new VmServer(server, registry, serverLogger);
   };
 
   destroy = async () => {

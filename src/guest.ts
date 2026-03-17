@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { tryCatch } from "./lib/utils";
-import { client } from "./orpc/client";
+import { vmClient } from "./orpc/vm-api/client";
 
 const main = async () => {
   const decoder = new TextDecoder();
@@ -8,7 +8,7 @@ const main = async () => {
   while (alive) {
     await Bun.sleep(1000);
     console.log("waiting for job...");
-    const { data, error } = await tryCatch(client.requestJob());
+    const { data, error } = await tryCatch(vmClient.requestJob());
     if (error) {
       console.error("Error:", error);
       await Bun.sleep(1000);
@@ -17,7 +17,7 @@ const main = async () => {
     const { jobType } = data;
     const result = await $`echo "${jobType}"`;
     const { data: submitData, error: submitErr } = await tryCatch(
-      client.submitJob({
+      vmClient.submitJob({
         exitCode: result.exitCode,
         stdout: decoder.decode(result.stdout),
         stderr: decoder.decode(result.stderr),
