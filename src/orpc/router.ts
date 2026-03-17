@@ -11,13 +11,8 @@ const vmRoute = os
     const start = Date.now();
     const result = await next();
     const end = Date.now();
-    serverLogger.info(
-      {
-        timeMs: end - start,
-        endpoint: path.join("/"),
-        redisKey: context.redisKey,
-      },
-      "Request Timer",
+    serverLogger.trace(
+      `${path.join("/")}: time elapsed ${String(end - start)}ms`,
     );
     return result;
   });
@@ -61,7 +56,9 @@ export const router = {
     )
     .handler(({ input, context }) => {
       const { serverLogger } = context;
-      serverLogger.info(input, "Received a job submission");
+      serverLogger.info(
+        `Received a job submission. Exit code was ${String(input.exitCode)}`,
+      );
 
       return {
         action: "continue",

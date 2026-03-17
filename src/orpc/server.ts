@@ -76,7 +76,7 @@ export class HostServer implements AsyncDisposable {
           }
           const closedAt = Date.now();
           const connTimeMs = closedAt - ws.data.openedAt;
-          serverLogger.debug({ connTimeMs }, "Websocket closed");
+          serverLogger.debug(`Websocket closed after ${String(connTimeMs)}ms`);
 
           handler.close(ws);
         },

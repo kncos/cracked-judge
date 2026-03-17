@@ -7,7 +7,7 @@ export class DisposableRedis extends Redis {
   async [Symbol.asyncDispose]() {
     const { error } = await tryCatch(
       Promise.race([
-        Bun.sleep(2000).then(() => {
+        Bun.sleep(3000).then(() => {
           this.disconnect();
         }),
         this.quit(),

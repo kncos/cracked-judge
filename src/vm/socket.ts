@@ -3,9 +3,8 @@ import { $ } from "bun";
 import type pino from "pino";
 import { VmFilesystem } from "./filesys";
 
-const getLogger = (vmfs: VmFilesystem) => {
-  const prefix = vmfs.vmId;
-  const socketLogger = logger.child({}, { msgPrefix: `[Socket ${prefix}] ` });
+const getLogger = () => {
+  const socketLogger = logger.child({}, { msgPrefix: `[Socket] ` });
   return socketLogger;
 };
 
@@ -18,7 +17,7 @@ export class VmSocketListener implements AsyncDisposable {
 
   static create = async (vmfs: VmFilesystem): Promise<VmSocketListener> => {
     const socketPath = vmfs.guestInitiatedSocketPath;
-    const socketLogger = getLogger(vmfs);
+    const socketLogger = getLogger();
     // do this first to clean up any stale socket that might be here
     await this.rmSocketPath(vmfs);
 
@@ -42,12 +41,10 @@ export class VmSocketListener implements AsyncDisposable {
   private static rmSocketPath = async (vmfs: VmFilesystem) => {
     const socketPath = vmfs.guestInitiatedSocketPath;
     const rm = await $`rm -f ${socketPath}`.throws(false).quiet();
-    const socketLogger = getLogger(vmfs);
+    const socketLogger = getLogger();
     if (rm.exitCode !== 0) {
       socketLogger.warn(
         {
-          socketPath,
-          vmId: vmfs.vmId,
           cmd: `rm -f ${socketPath}`,
           stdout: new TextDecoder().decode(rm.stdout),
           stderr: new TextDecoder().decode(rm.stderr),
@@ -60,7 +57,7 @@ export class VmSocketListener implements AsyncDisposable {
   destroy = async () => {
     this.proc.kill();
     await VmSocketListener.rmSocketPath(this.vmfs);
-    this.socketLogger.info(`shutting down listener for ${this.vmfs.vmId}`);
+    this.socketLogger.info("Destroyed listener");
   };
 
   async [Symbol.asyncDispose]() {

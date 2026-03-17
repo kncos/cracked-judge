@@ -42,8 +42,8 @@ export class VmOrchestrator implements AsyncDisposable {
 
   async [Symbol.asyncDispose]() {
     try {
-      await this.resources[Symbol.asyncDispose]();
       await this.server.destroy();
+      await this.resources[Symbol.asyncDispose]();
     } catch (error) {
       if (error instanceof MultiAsyncDisposeError) {
         logger.error(error.cause, "Failed to dispose of VM orchestrator!");

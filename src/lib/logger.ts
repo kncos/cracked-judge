@@ -40,24 +40,25 @@ export const registerProcess = (params: {
 }) => {
   const { proc, logger } = params;
 
+  const procLogger = logger.child(
+    {},
+    { msgPrefix: `(pid ${String(proc.pid)}) ` },
+  );
+
   // ignored
   void bufferStream(proc.stdout, (input) => {
-    logger.trace(input);
+    procLogger.trace(input);
   });
   void bufferStream(proc.stderr, (input) => {
-    logger.warn(input);
+    procLogger.warn(input);
   });
   void proc.exited.then((exitCode) => {
     if (exitCode === 0) {
-      logger.debug("Process exited successfully with code 0.");
+      procLogger.debug("Process exited successfully with code 0.");
+    } else if (exitCode === 143) {
+      procLogger.debug("Process exited successfully with SIGTERM");
     } else {
-      logger.warn(`Process exited with code ${String(exitCode)}.`);
-    }
-    const resource = proc.resourceUsage();
-    if (resource === undefined || Object.keys(resource).length === 0) {
-      logger.warn("Resource usage unavailable!");
-    } else {
-      logger.debug(resource, "Resource usage:");
+      procLogger.warn(`Process exited with code ${String(exitCode)}.`);
     }
   });
 };
