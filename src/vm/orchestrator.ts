@@ -1,4 +1,4 @@
-import { logger } from "@/lib/logger";
+import { baseLogger } from "@/lib/logger";
 import { VmServer } from "@/orpc/vm-api/server";
 import type { VmConfig } from ".";
 import {
@@ -46,7 +46,7 @@ export class VmOrchestrator implements AsyncDisposable {
       await this.resources[Symbol.asyncDispose]();
     } catch (error) {
       if (error instanceof MultiAsyncDisposeError) {
-        logger.error(error.cause, "Failed to dispose of VM orchestrator!");
+        baseLogger.error(error.cause, "Failed to dispose of VM orchestrator!");
       }
     }
   }

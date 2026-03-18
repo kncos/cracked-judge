@@ -1,7 +1,7 @@
 import createClient from "openapi-fetch";
 import type pino from "pino";
 import type { paths } from "./firecracker-types";
-import { logger } from "./logger";
+import { baseLogger } from "./logger";
 import { tryCatch } from "./utils";
 
 export class FirecrackerError extends Error {
@@ -21,7 +21,7 @@ export const createFirecrackerClient = (params: {
   vmId: string;
   fcLogger?: pino.Logger;
 }) => {
-  const { socket, vmId, fcLogger = logger } = params;
+  const { socket, vmId, fcLogger = baseLogger } = params;
   return createClient<paths>({
     baseUrl: "http://localhost/",
     fetch: async (input) => {

@@ -1,10 +1,10 @@
-import { logger, registerProcess } from "@/lib/logger";
+import { baseLogger, registerProcess } from "@/lib/logger";
 import { $ } from "bun";
 import type pino from "pino";
 import { VmFilesystem } from "./filesys";
 
 const getLogger = () => {
-  const socketLogger = logger.child({}, { msgPrefix: `[Socket] ` });
+  const socketLogger = baseLogger.child({}, { msgPrefix: `[Socket] ` });
   return socketLogger;
 };
 

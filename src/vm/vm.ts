@@ -2,14 +2,14 @@ import {
   createFirecrackerClient,
   type FirecrackerClient,
 } from "@/lib/firecracker-api";
-import { logger, registerProcess } from "@/lib/logger";
+import { baseLogger, registerProcess } from "@/lib/logger";
 import { join } from "path";
 import type { VmConfig } from ".";
 import { VmFilesystem } from "./filesys";
 import { VmSocketListener } from "./socket";
 
 const getLogger = (vmId: string) => {
-  const vmLogger = logger.child({}, { msgPrefix: `[${vmId}] ` });
+  const vmLogger = baseLogger.child({}, { msgPrefix: `[${vmId}] ` });
   return vmLogger;
 };
 

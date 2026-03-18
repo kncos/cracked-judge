@@ -1,6 +1,6 @@
 import Redis from "ioredis";
 import { AsyncDisposableMap } from "./AsyncDisposableMap";
-import { logger } from "./logger";
+import { baseLogger } from "./logger";
 import { tryCatch } from "./utils";
 
 export class DisposableRedis extends Redis {
@@ -14,7 +14,7 @@ export class DisposableRedis extends Redis {
       ]),
     );
     if (error) {
-      logger.warn(
+      baseLogger.warn(
         { errorMsg: error.message },
         "Exception while cleaning up redis in async dispose",
       );

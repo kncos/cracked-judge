@@ -1,7 +1,7 @@
 import Redis from "ioredis";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { logger } from "./lib/logger";
+import { baseLogger } from "./lib/logger";
 import type { VmConfig } from "./vm";
 import { VmOrchestrator } from "./vm/orchestrator";
 
@@ -21,7 +21,7 @@ const conf: VmConfig = {
 await using pool = new VmOrchestrator(conf);
 for (let i = 0; i < 3; i++) {
   const id = await pool.spawnVm(`vm${String(i)}`);
-  logger.info(`Spawned VM with id ${id}`);
+  baseLogger.info(`Spawned VM with id ${id}`);
 }
 
 const rl = createInterface({
@@ -30,11 +30,11 @@ const rl = createInterface({
 
 // out here
 const cleanup = async () => {
-  logger.info("Cleaning up index.ts redis connection");
+  baseLogger.info("Cleaning up index.ts redis connection");
   await redis.quit();
-  logger.info("Closing file descriptors");
+  baseLogger.info("Closing file descriptors");
   rl.close();
-  logger.info("Graceful Shutdown: Goodbye");
+  baseLogger.info("Graceful Shutdown: Goodbye");
 };
 
 const redis = new Redis();

@@ -3,7 +3,7 @@ import { tryCatch } from "@/lib/utils";
 import { onError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/bun-ws";
 import type { Logger } from "pino";
-import { logger } from "../../lib/logger";
+import { baseLogger } from "../../lib/logger";
 import type { ServerCtx } from "../orpc";
 import { vmRouter } from "./router";
 
@@ -17,7 +17,7 @@ export class VmServer implements AsyncDisposable {
 
   static create = (name: string = "Server") => {
     const registry = new RedisRegistry();
-    const serverLogger = logger.child({}, { msgPrefix: `[${name}] ` });
+    const serverLogger = baseLogger.child({}, { msgPrefix: `[${name}] ` });
     const handler = new RPCHandler<ServerCtx>(vmRouter, {
       interceptors: [
         onError((error) => {
