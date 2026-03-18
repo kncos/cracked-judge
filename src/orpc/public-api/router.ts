@@ -1,26 +1,20 @@
-import { tryCatch } from "@/lib/utils";
+import { enqueueJob } from "@/lib/typed-redis";
+import { eventIterator } from "@orpc/server";
 import z from "zod";
 import { publicRoute } from "../orpc";
+import { zJob, zJobFinalResult, zJobPartialStatus } from "../schemas";
 
 export const publicRouter = {
   enqueue: publicRoute
-    .input(
-      z.object({
-        lang: z.enum(["cpp", "python"]),
-        file: z.file(),
-      }),
-    )
+    .input(zJob)
     .output(
-      z.object({
-        success: z.boolean(),
-      }),
+      eventIterator(
+        z.discriminatedUnion("type", [zJobFinalResult, zJobPartialStatus]),
+      ),
     )
-    .handler(async ({ input, context }) => {
-      const { redis, serverLogger } = context;
+    .handler(async function* ({ input, context }) {
+      const { redis } = context;
       const { lang, file } = input;
-      const { error } = await tryCatch(redis.lpush("job", lang, file));
-      if (error) {
-        return { success: false };
-      }
+      await enqueueJob(redis, lang, file);
     }),
 };
