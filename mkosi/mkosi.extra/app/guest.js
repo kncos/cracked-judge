@@ -1819,12 +1819,12 @@ class RPCLink extends StandardRPCLink {
   }
 }
 
-// src/orpc/client.ts
+// src/orpc/vm-api/client.ts
 var websocket = new WebSocket("ws://localhost:3000");
 var link = new RPCLink({
   websocket
 });
-var client = createORPCClient(link);
+var vmClient = createORPCClient(link);
 
 // src/guest.ts
 var main = async () => {
@@ -1833,7 +1833,7 @@ var main = async () => {
   while (alive) {
     await Bun.sleep(1000);
     console.log("waiting for job...");
-    const { data, error } = await tryCatch(client.requestJob());
+    const { data, error } = await tryCatch(vmClient.requestJob());
     if (error) {
       console.error("Error:", error);
       await Bun.sleep(1000);
@@ -1841,7 +1841,7 @@ var main = async () => {
     }
     const { jobType } = data;
     const result = await $`echo "${jobType}"`;
-    const { data: submitData, error: submitErr } = await tryCatch(client.submitJob({
+    const { data: submitData, error: submitErr } = await tryCatch(vmClient.submitJob({
       exitCode: result.exitCode,
       stdout: decoder.decode(result.stdout),
       stderr: decoder.decode(result.stderr)

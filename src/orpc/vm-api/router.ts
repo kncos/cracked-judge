@@ -1,21 +1,6 @@
-import { os } from "@orpc/server";
 import * as z from "zod";
 import { tryCatch } from "../../lib/utils";
-import type { VmServerCtx } from "./server";
-
-const vmRoute = os
-  .$context<VmServerCtx>()
-  .use(async ({ next, context, path }) => {
-    const { serverLogger } = context;
-
-    const start = Date.now();
-    const result = await next();
-    const end = Date.now();
-    serverLogger.trace(
-      `${path.join("/")}: time elapsed ${String(end - start)}ms`,
-    );
-    return result;
-  });
+import { vmRoute } from "../orpc";
 
 const i = 0;
 export const vmRouter = {
