@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { tryCatch } from "./lib/utils";
-import { vmClient } from "./orpc/vm-api/client";
+import { vmClient } from "./orpc/client";
 
 const main = async () => {
   const decoder = new TextDecoder();

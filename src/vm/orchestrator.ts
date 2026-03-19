@@ -1,5 +1,5 @@
 import { baseLogger } from "@/lib/logger";
-import { VmServer } from "@/orpc/vm-api/server";
+import { VmServer } from "@/orpc/server";
 import type { VmConfig } from ".";
 import {
   AsyncDisposableMap,

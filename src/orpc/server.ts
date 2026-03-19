@@ -1,11 +1,13 @@
 import { RedisRegistry } from "@/lib/redis-registry";
 import { tryCatch } from "@/lib/utils";
 import { onError } from "@orpc/server";
-import { RPCHandler } from "@orpc/server/bun-ws";
+import { RPCHandler as RPCHandlerWs } from "@orpc/server/bun-ws";
+import { RPCHandler } from "@orpc/server/fetch";
 import type { Logger } from "pino";
-import { baseLogger } from "../../lib/logger";
-import type { ServerCtx } from "../orpc";
-import { vmRouter } from "./router";
+import { baseLogger } from "../lib/logger";
+import { judge } from "./api/judge";
+import { vm } from "./api/vm";
+import type { ServerCtx } from "./orpc";
 
 export class VmServer implements AsyncDisposable {
   private static port: number = 3000;
@@ -18,7 +20,15 @@ export class VmServer implements AsyncDisposable {
   static create = (name: string = "Server") => {
     const registry = new RedisRegistry();
     const serverLogger = baseLogger.child({}, { msgPrefix: `[${name}] ` });
-    const handler = new RPCHandler<ServerCtx>(vmRouter, {
+    const vmHandler = new RPCHandlerWs<ServerCtx>(vm, {
+      interceptors: [
+        onError((error) => {
+          serverLogger.error(error, "RPC Error occurred");
+        }),
+      ],
+    });
+
+    const judgeHandler = new RPCHandler<ServerCtx>(judge, {
       interceptors: [
         onError((error) => {
           serverLogger.error(error, "RPC Error occurred");
@@ -54,7 +64,7 @@ export class VmServer implements AsyncDisposable {
       },
       websocket: {
         async message(ws, message) {
-          await handler.message(ws, message, {
+          await vmHandler.message(ws, message, {
             context: {
               ...ws.data,
             },
@@ -72,7 +82,7 @@ export class VmServer implements AsyncDisposable {
           const connTimeMs = closedAt - ws.data.openedAt;
           serverLogger.debug(`Websocket closed after ${String(connTimeMs)}ms`);
 
-          handler.close(ws);
+          vmHandler.close(ws);
         },
       },
     });

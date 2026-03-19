@@ -3,7 +3,7 @@ import { vmRoute } from "../orpc";
 import { zJobResolved, zJobResult, zJobStatus } from "../schemas";
 import { consumeJob, submitJobResult, submitJobStatus } from "../typed-redis";
 
-export const vmRouter = {
+export const vm = {
   requestJob: vmRoute
     .output(zJobResolved.nullable())
     .handler(async ({ context }) => {
@@ -39,4 +39,4 @@ export const vmRouter = {
     }),
 };
 
-export type AppRouter = typeof vmRouter;
+export type AppRouter = typeof vm;

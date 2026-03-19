@@ -7,7 +7,7 @@ import { eventIterator } from "@orpc/server";
 import { publicRoute } from "../orpc";
 import { zJob, zJobStatusOrResult } from "../schemas";
 
-export const publicRouter = {
+export const judge = {
   submit: publicRoute
     .input(zJob)
     .output(eventIterator(zJobStatusOrResult))
