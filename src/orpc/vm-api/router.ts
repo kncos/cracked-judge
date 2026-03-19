@@ -1,49 +1,37 @@
 import * as z from "zod";
-import { tryCatch } from "../../lib/utils";
 import { vmRoute } from "../orpc";
+import { zJobResolved, zJobResult, zJobStatus } from "../schemas";
+import { consumeJob, submitJobResult, submitJobStatus } from "../typed-redis";
 
-const i = 0;
 export const vmRouter = {
   requestJob: vmRoute
-    .output(
-      z.object({
-        script: z.string(),
-        jobType: z.enum(["script"]),
-      }),
-    )
+    .output(zJobResolved.nullable())
     .handler(async ({ context }) => {
-      const { redis, serverLogger } = context;
+      const { redis } = context;
 
-      // for now we just assume data is a basic string w/ no chars that need escaped
-      const { data, error } = await tryCatch(redis.brpop("script", 0));
-
-      if (error) {
-        serverLogger.error("Failed to brpop from redis!");
+      const data = await consumeJob(redis, 0);
+      return data;
+    }),
+  submitJobStatus: vmRoute
+    .input(zJobStatus)
+    .handler(async ({ input, context }) => {
+      if (input.status === "completed" || input.status === "timed-out") {
+        throw new Error("do not send these (todo: add better type)");
       }
 
-      return {
-        jobType: "script",
-        script: `/bin/sh -c 'echo "Hello from guest ${String(i)}: ${data?.join(" ") || "redis error"}"'`,
-      };
+      const { redis } = context;
+      await submitJobStatus(redis, input);
     }),
-  submitJob: vmRoute
-    .input(
-      z.object({
-        stderr: z.string(),
-        stdout: z.string(),
-        exitCode: z.number(),
-      }),
-    )
+  submitJobResult: vmRoute
+    .input(zJobResult)
     .output(
       z.object({
         action: z.enum(["continue", "die"]),
       }),
     )
-    .handler(({ input, context }) => {
-      const { serverLogger } = context;
-      serverLogger.info(
-        `Received a job submission. Exit code was ${String(input.exitCode)}`,
-      );
+    .handler(async ({ input, context }) => {
+      const { redis } = context;
+      await submitJobResult(redis, input);
 
       return {
         action: "continue",

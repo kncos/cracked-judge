@@ -5,6 +5,10 @@ import { tryCatch } from "./utils";
 
 export class DisposableRedis extends Redis {
   async [Symbol.asyncDispose]() {
+    if (this.status === "end") {
+      return;
+    }
+
     const { error } = await tryCatch(
       Promise.race([
         Bun.sleep(3000).then(() => {

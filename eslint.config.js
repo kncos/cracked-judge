@@ -15,6 +15,11 @@ export default tseslint.config(
     rules: {
       // Error on unawaited promises
       "@typescript-eslint/no-floating-promises": "error",
+      // Ignore unused variables that start with underscore
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
     },
   },
   {

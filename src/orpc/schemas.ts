@@ -43,7 +43,7 @@ export const zJobResult = z.object({
 export const zJobStatus = z.object({
   id: z.uuid(),
   type: z.literal("status"),
-  status: z.enum(["pending", "timed-out"]),
+  status: z.enum(["pending", "timed-out", "completed"]),
 });
 
 export const zJobStatusOrResult = z.discriminatedUnion("type", [

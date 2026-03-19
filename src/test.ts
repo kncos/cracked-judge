@@ -1,18 +1,44 @@
-import z from "zod";
+/* eslint-disable @typescript-eslint/no-unnecessary-condition */
+import { DisposableRedis } from "./lib/redis-registry";
 
-export const zJob = z
-  .object({
-    lang: z.enum(["cpp", "python"]),
-    file: z.file(),
-  })
-  .transform(async (input) => {
-    const fileData = await input.file.arrayBuffer();
-    await Bun.sleep(250);
-    return {
-      ...input,
-      file: Buffer.from(fileData),
-    };
+const test = async (signal?: AbortSignal) => {
+  await using redis = new DisposableRedis();
+  if (signal?.aborted) return null;
+
+  let disconnected: boolean = false;
+
+  const abort = () => {
+    disconnected = true;
+    redis.disconnect();
+  };
+
+  signal?.addEventListener("abort", abort, { once: true });
+
+  try {
+    const result = await redis.brpop("some-queue", 10);
+    if (disconnected) {
+      console.log("Disconnected");
+      return;
+    }
+
+    console.log(result);
+  } catch (error) {
+    console.log("catching exception. disconnected:", disconnected);
+    if (disconnected) return null;
+    throw error;
+  } finally {
+    console.log("removing event listener");
+    signal?.removeEventListener("abort", abort);
+  }
+};
+
+const main = async () => {
+  const controller = new AbortController();
+  void test(controller.signal);
+
+  await Bun.sleep(5000).then(() => {
+    controller.abort();
   });
 
-const file = new File(["hello, world"], "test");
-const result = await zJob.parseAsync({ lang: "cpp", file });
+  return;
+};
