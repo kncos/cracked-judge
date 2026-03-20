@@ -1,6 +1,8 @@
 import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
+import { RPCLink as RPCLinkWs } from "@orpc/client/websocket";
 import { os, type RouterClient } from "@orpc/server";
+import { RPCHandler as RPCHandlerWs } from "@orpc/server/bun-ws";
 import { RPCHandler } from "@orpc/server/fetch";
 import { CORSPlugin } from "@orpc/server/plugins";
 import z from "zod";
@@ -15,7 +17,7 @@ const r1 = {
       }),
     )
     .output(z.number())
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input }) => {
       return input.a + input.b;
     }),
 };
@@ -28,69 +30,71 @@ const r2 = {
       }),
     )
     .output(z.number())
-    .handler(async ({ input, context }) => {
+    .handler(async ({ input }) => {
       return input.a - input.b;
     }),
 };
 
-const root = {
-  r1,
-  r2,
-};
-
-const h1 = new RPCHandler(r1, {
+// r1 handled via WebSocket, r2 handled via HTTP
+const wsHandler = new RPCHandlerWs(r1);
+const httpHandler = new RPCHandler(r2, {
   plugins: [new CORSPlugin()],
 });
-const h2 = new RPCHandler(r2);
 
-const rootHandler = new RPCHandler(root);
-
-const server = Bun.serve({
+const server = Bun.serve<{ openedAt: number }>({
   hostname: "localhost",
   port: 3000,
-  async fetch(req) {
-    // separate h1 and h2
-    const { matched: h1matched, response: h1res } = await h1.handle(req, {
-      // prefix: "/r1",
-    });
-    if (h1matched) return h1res;
+  async fetch(req, server) {
+    console.log("fetch:", req.url);
 
-    const { matched: h2matched, response: h2res } = await h2.handle(req, {
-      // prefix: "/r2",
-    });
-    if (h2matched) return h2res;
+    // Try HTTP handler first (for r2/sub)
+    const { matched: httpMatched, response: httpRes } =
+      await httpHandler.handle(req);
+    if (httpMatched) return httpRes;
 
-    return new Response("", { status: 404 });
+    // Upgrade to WebSocket for r1/add
+    const isUpgraded = server.upgrade(req, {
+      data: { openedAt: Date.now() },
+    });
+    if (!isUpgraded) {
+      return new Response("WebSocket upgrade failed", { status: 500 });
+    }
+  },
+  websocket: {
+    async message(ws, message) {
+      await wsHandler.message(ws, message, {
+        context: { ...ws.data },
+      });
+    },
+    // eslint-disable-next-line @typescript-eslint/require-await
+    async close(ws) {
+      console.log("closed");
+      wsHandler.close(ws);
+    },
   },
 });
 
-const link1 = new RPCLink({
-  url: "http://localhost:3000",
-});
+await Bun.sleep(100);
 
-const link2 = new RPCLink({
-  url: "http://localhost:3000",
-});
+// HTTP client for r2/sub
+const httpLink = new RPCLink({ url: "http://localhost:3000" });
+const httpClient: RouterClient<typeof r2> = createORPCClient(httpLink);
 
-await Bun.sleep(1000);
+// WebSocket client for r1/add
+const websocket = new WebSocket("ws://localhost:3000");
+const wsLink = new RPCLinkWs({ websocket });
+const wsClient: RouterClient<typeof r1> = createORPCClient(wsLink);
 
-export const client1: RouterClient<typeof r1> = createORPCClient(link1);
-export const client2: RouterClient<typeof r2> = createORPCClient(link2);
-
-const { data: c1_res } = await tryCatch(
-  client1.add({
-    a: 1,
-    b: 2,
-  }),
+// Test HTTP route (r2/sub)
+const { data: httpRes, error: httpErr } = await tryCatch(
+  httpClient.sub({ a: 5, b: 3 }),
 );
+console.log("HTTP (sub):", httpRes ?? httpErr);
 
-const { data: c2_res } = await tryCatch(
-  client2.sub({
-    a: 1,
-    b: 2,
-  }),
+// Test WebSocket route (r1/add)
+const { data: wsRes, error: wsErr } = await tryCatch(
+  wsClient.add({ a: 5, b: 3 }),
 );
-
-console.log(c1_res, c2_res);
+console.log("WebSocket (add):", wsRes ?? wsErr);
 
 await server.stop();

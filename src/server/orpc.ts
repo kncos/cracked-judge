@@ -1,8 +1,20 @@
+import { type RedisPool } from "@/lib/redis-pool";
 import type { DisposableRedis } from "@/types/redis";
 import { os } from "@orpc/server";
 import type { Logger } from "pino";
 
-const o = os.$context<ServerCtx>();
+export type BaseCtx = {
+  //TODO: remove, use logger middleware provided by orpc
+  serverLogger: Logger;
+  redisPool: RedisPool;
+};
+
+export type WebsocketCtx = BaseCtx & {
+  redis: DisposableRedis;
+  openedAt: number;
+};
+
+const o = os.$context<BaseCtx>();
 
 const timingMiddleware = o.middleware(async ({ next, context, path }) => {
   const { serverLogger } = context;
@@ -16,11 +28,31 @@ const timingMiddleware = o.middleware(async ({ next, context, path }) => {
   return result;
 });
 
-export const vmRoute = o.use(timingMiddleware);
-export const publicRoute = o.use(timingMiddleware);
+const httpRedisMiddleware = o.middleware(
+  async ({ next, context, signal, path }) => {
+    const { redisPool, serverLogger } = context;
 
-export type ServerCtx = {
-  serverLogger: Logger;
-  openedAt: number;
-  redis: DisposableRedis;
-};
+    const redis = await redisPool.acquire();
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        void redisPool.release(redis);
+      });
+    } else {
+      serverLogger.warn({ path }, "No signal provided to clean up redis");
+    }
+
+    return await next({
+      context: {
+        ...context,
+        redis,
+      },
+    });
+  },
+);
+
+export const vmRoute = o.$context<WebsocketCtx>().use(timingMiddleware);
+
+export const publicRoute = o
+  .$context<BaseCtx>()
+  .use(timingMiddleware)
+  .use(httpRedisMiddleware);
