@@ -1,5 +1,6 @@
+import { createRedisPool, type RedisPool } from "@/lib/redis-pool";
 import { zJobResolved, zJobResult, zJobStatus } from "@/server/schemas";
-import { isReplyError } from "@/types/redis";
+import { DisposableRedis, isReplyError } from "@/types/redis";
 import { on } from "events";
 import Redis from "ioredis";
 import z, { ZodError } from "zod";
@@ -81,6 +82,7 @@ const handleError = (
 
 const keys = {
   job: (id: string) => `job:${id}` as const,
+  jobFile: (id: string) => `job:file:${id}` as const,
   result: (id: string) => `result:${id}` as const,
   status: (id: string) => `status:${id}` as const,
 };
@@ -90,10 +92,21 @@ export async function enqueueJob(
   redis: Redis,
   input: z.infer<typeof zJobResolved>,
 ) {
-  const key = keys.job(input.id);
+  const jobKey = keys.job(input.id);
+  const fileKey = keys.jobFile(input.id);
   try {
-    await redis.lpush(JOB_QUEUE, key);
-    await redis.hset(key, input);
+    const { file, ...rest } = input;
+    await redis.lpush(JOB_QUEUE, input.id);
+    await redis.hset(jobKey, rest);
+    await redis.set(fileKey, file);
+    redisLogger.info(
+      {
+        JOB_QUEUE,
+        jobKey,
+        fileKey,
+      },
+      "Enqueued job",
+    );
   } catch (error) {
     return handleError("enqueueJob", error);
   }
@@ -110,11 +123,28 @@ export async function consumeJob(
     if (result === null) {
       return null;
     }
-    const [_, key] = result;
+    const [_, jobId] = result;
     // fetch from set and parse
-    const hgetData = await redis.hgetall(key);
-    const parsed = zJobResolved.parse(hgetData);
-    await redis.del(key);
+    const jobKey = keys.job(jobId);
+    const fileKey = keys.jobFile(jobId);
+    const hgetData = await redis.hgetall(jobKey);
+    const file = await redis.getBuffer(fileKey);
+
+    redisLogger.info(
+      {
+        fileKey,
+        jobKey,
+        file: file?.toString() || null,
+        hgetData,
+      },
+      "Dequeued job",
+    );
+
+    const parsed = zJobResolved.parse({
+      ...hgetData,
+      file,
+    });
+    await redis.del(jobKey, fileKey);
     return parsed;
   } catch (error) {
     // returns never -- satisfies ts
@@ -170,15 +200,23 @@ export class JobStatusConsumer {
   #timer: NodeJS.Timeout | null = null;
 
   private constructor(
-    readonly redis: Redis,
+    readonly redisPool: RedisPool,
+    readonly redis: DisposableRedis,
     readonly jobId: string,
     readonly channelKey: string,
     readonly timeout?: number,
   ) {}
 
-  static async create(redis: Redis, id: string, timeout?: number) {
+  static async create(redisPool: RedisPool, id: string, timeout?: number) {
     const channelKey = keys.result(id);
-    const consumer = new JobStatusConsumer(redis, id, channelKey, timeout);
+    const redis = await redisPool.acquire();
+    const consumer = new JobStatusConsumer(
+      redisPool,
+      redis,
+      id,
+      channelKey,
+      timeout,
+    );
     await consumer.redis.subscribe(channelKey);
     return consumer;
   }
@@ -195,7 +233,11 @@ export class JobStatusConsumer {
     }
 
     this.#ac.abort();
-    await Promise.allSettled([this.redis.unsubscribe(this.channelKey)]);
+    try {
+      await Promise.allSettled([this.redis.unsubscribe(this.channelKey)]);
+    } finally {
+      await this.redisPool.destroy(this.redis);
+    }
   }
 
   async *#iterate(): AsyncGenerator<z.infer<typeof zJobStatus>> {
@@ -238,5 +280,69 @@ export class JobStatusConsumer {
 
   async [Symbol.asyncDispose]() {
     await this.destroy();
+  }
+}
+
+export class RedisManager {
+  private constructor(private readonly redisPool: RedisPool) {}
+
+  static create = async () => {
+    const pool = await createRedisPool();
+    return new RedisManager(pool);
+  };
+
+  destoy = async () => {
+    await this.redisPool.drain();
+    await this.redisPool.clear();
+  };
+
+  enqueueJob = async (input: z.infer<typeof zJobResolved>) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      await enqueueJob(redis, input);
+    } finally {
+      await this.redisPool.destroy(redis);
+    }
+  };
+
+  consumeJob = async (timeout: number) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      return await consumeJob(redis, timeout);
+    } finally {
+      await this.redisPool.destroy(redis);
+    }
+  };
+
+  fetchJobResult = async (jobId: string) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      return await fetchJobResult(redis, jobId);
+    } finally {
+      await this.redisPool.destroy(redis);
+    }
+  };
+
+  submitJobStatus = async (input: z.infer<typeof zJobStatus>) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      // void
+      await submitJobStatus(redis, input);
+    } finally {
+      await this.redisPool.destroy(redis);
+    }
+  };
+
+  submitJobResult = async (input: z.infer<typeof zJobResult>) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      await submitJobResult(redis, input);
+    } finally {
+      await this.redisPool.destroy(redis);
+    }
+  };
+
+  async [Symbol.asyncDispose]() {
+    await this.destoy();
   }
 }

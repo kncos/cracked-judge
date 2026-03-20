@@ -35,7 +35,7 @@ const httpRedisMiddleware = o.middleware(
     const redis = await redisPool.acquire();
     if (signal) {
       signal.addEventListener("abort", () => {
-        void redisPool.release(redis);
+        void redisPool.destroy(redis);
       });
     } else {
       serverLogger.warn({ path }, "No signal provided to clean up redis");

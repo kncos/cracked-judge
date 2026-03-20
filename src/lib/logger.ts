@@ -1,7 +1,7 @@
 import pino from "pino";
 
 export const baseLogger = pino({
-  level: "debug",
+  level: "trace",
   transport: {
     target: "pino-pretty",
     options: {

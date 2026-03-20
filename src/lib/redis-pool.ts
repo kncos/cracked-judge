@@ -1,5 +1,8 @@
 import { DisposableRedis } from "@/types/redis";
 import genericPool from "generic-pool";
+import { baseLogger } from "./logger";
+
+const poolLogger = baseLogger.child({}, { msgPrefix: "[REDIS POOL] " });
 
 export const redisPoolFactory: genericPool.Factory<DisposableRedis> = {
   create: async function () {
@@ -11,7 +14,13 @@ export const redisPoolFactory: genericPool.Factory<DisposableRedis> = {
     return client;
   },
   validate: async function (client: DisposableRedis) {
-    return Promise.resolve(client.status === "ready");
+    const ready = await Promise.resolve(client.status === "ready");
+    const subscriber = client.condition?.subscriber;
+    if (client.condition?.subscriber !== false) {
+      poolLogger.fatal({ subscriber }, "CLIENT IS SUBSCRIBED?");
+    }
+
+    return ready;
   },
 
   // note: test async with this

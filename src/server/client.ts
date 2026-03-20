@@ -10,17 +10,11 @@ const websocket = new WebSocket("ws://localhost:3000");
 const vmLink = new RPCLinkWs({
   websocket,
 });
-export const vmClient: RouterClient<typeof vm> = createORPCClient(vmLink, {
-  path: ["vm"],
-});
+export const vmClient: RouterClient<typeof vm> = createORPCClient(vmLink);
 
 // public client for users to submit jobs
 const judgeLink = new RPCLink({
-  url: "https://localhost:3000",
+  url: "http://localhost:3000",
 });
-export const judgeCLient: RouterClient<typeof judge> = createORPCClient(
-  judgeLink,
-  {
-    path: ["judge"],
-  },
-);
+export const judgeClient: RouterClient<typeof judge> =
+  createORPCClient(judgeLink);

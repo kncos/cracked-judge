@@ -388,6 +388,12 @@ function intercept(interceptors, options, main) {
   };
   return next(options, 0);
 }
+function parseEmptyableJSON(text) {
+  if (!text) {
+    return;
+  }
+  return JSON.parse(text);
+}
 function stringifyJSON(value) {
   return JSON.stringify(value);
 }
@@ -725,6 +731,12 @@ function assertEventId(id) {
     throw new EventEncoderError("Event's id must not contain a newline character");
   }
 }
+function assertEventName(event) {
+  if (event.includes(`
+`)) {
+    throw new EventEncoderError("Event's event must not contain a newline character");
+  }
+}
 function assertEventRetry(retry) {
   if (!Number.isInteger(retry) || retry < 0) {
     throw new EventEncoderError("Event's retry must be a integer and >= 0");
@@ -735,6 +747,47 @@ function assertEventComment(comment) {
 `)) {
     throw new EventEncoderError("Event's comment must not contain a newline character");
   }
+}
+function encodeEventData(data) {
+  const lines = data?.split(/\n/) ?? [];
+  let output = "";
+  for (const line of lines) {
+    output += `data: ${line}
+`;
+  }
+  return output;
+}
+function encodeEventComments(comments) {
+  let output = "";
+  for (const comment of comments ?? []) {
+    assertEventComment(comment);
+    output += `: ${comment}
+`;
+  }
+  return output;
+}
+function encodeEventMessage(message) {
+  let output = "";
+  output += encodeEventComments(message.comments);
+  if (message.event !== undefined) {
+    assertEventName(message.event);
+    output += `event: ${message.event}
+`;
+  }
+  if (message.retry !== undefined) {
+    assertEventRetry(message.retry);
+    output += `retry: ${message.retry}
+`;
+  }
+  if (message.id !== undefined) {
+    assertEventId(message.id);
+    output += `id: ${message.id}
+`;
+  }
+  output += encodeEventData(message.data);
+  output += `
+`;
+  return output;
 }
 var EVENT_SOURCE_META_SYMBOL = Symbol("ORPC_EVENT_SOURCE_META");
 function withEventMeta(container, meta) {
@@ -885,187 +938,54 @@ function createORPCClient(link, options = {}) {
   return preventNativeAwait(recursive);
 }
 
-// node_modules/@orpc/standard-server-peer/dist/index.mjs
-var SHORTABLE_ORIGIN_MATCHER = /^http:\/\/orpc\//;
-var MessageType = /* @__PURE__ */ ((MessageType2) => {
-  MessageType2[MessageType2["REQUEST"] = 1] = "REQUEST";
-  MessageType2[MessageType2["RESPONSE"] = 2] = "RESPONSE";
-  MessageType2[MessageType2["EVENT_ITERATOR"] = 3] = "EVENT_ITERATOR";
-  MessageType2[MessageType2["ABORT_SIGNAL"] = 4] = "ABORT_SIGNAL";
-  return MessageType2;
-})(MessageType || {});
-function serializeRequestMessage(id, type, payload) {
-  if (type === 3) {
-    const eventPayload = payload;
-    const serializedPayload2 = {
-      e: eventPayload.event,
-      d: eventPayload.data,
-      m: eventPayload.meta
-    };
-    return { i: id, t: type, p: serializedPayload2 };
-  }
-  if (type === 4) {
-    return { i: id, t: type, p: payload };
-  }
-  const request = payload;
-  const serializedPayload = {
-    u: request.url.toString().replace(SHORTABLE_ORIGIN_MATCHER, "/"),
-    b: request.body,
-    h: Object.keys(request.headers).length > 0 ? request.headers : undefined,
-    m: request.method === "POST" ? undefined : request.method
-  };
-  return {
-    i: id,
-    p: serializedPayload
-  };
-}
-function deserializeResponseMessage(message) {
-  const id = message.i;
-  const type = message.t;
-  if (type === 3) {
-    const payload2 = message.p;
-    return [id, type, { event: payload2.e, data: payload2.d, meta: payload2.m }];
-  }
-  if (type === 4) {
-    return [id, type, message.p];
-  }
-  const payload = message.p;
-  return [id, 2, {
-    status: payload.s ?? 200,
-    headers: payload.h ?? {},
-    body: payload.b
-  }];
-}
-async function encodeRequestMessage(id, type, payload) {
-  if (type === 3 || type === 4) {
-    return encodeRawMessage(serializeRequestMessage(id, type, payload));
-  }
-  const request = payload;
-  const { body: processedBody, headers: processedHeaders } = await serializeBodyAndHeaders(request.body, request.headers);
-  const modifiedRequest = {
-    ...request,
-    body: processedBody instanceof Blob ? undefined : processedBody,
-    headers: processedHeaders
-  };
-  const baseMessage = serializeRequestMessage(id, 1, modifiedRequest);
-  if (processedBody instanceof Blob) {
-    return encodeRawMessage(baseMessage, processedBody);
-  }
-  return encodeRawMessage(baseMessage);
-}
-async function decodeResponseMessage(raw) {
-  const { json: message, buffer } = await decodeRawMessage(raw);
-  const [id, type, payload] = deserializeResponseMessage(message);
-  if (type === 3 || type === 4) {
-    return [id, type, payload];
-  }
-  const response = payload;
-  const body = await deserializeBody(response.headers, response.body, buffer);
-  return [id, type, { ...response, body }];
-}
-async function serializeBodyAndHeaders(body, originalHeaders) {
-  const headers = { ...originalHeaders };
-  const originalContentDisposition = headers["content-disposition"];
-  delete headers["content-type"];
-  delete headers["content-disposition"];
-  if (body instanceof Blob) {
-    headers["content-type"] = body.type;
-    headers["content-disposition"] = originalContentDisposition ?? generateContentDisposition(body instanceof File ? body.name : "blob");
-    return { body, headers };
-  }
-  if (body instanceof FormData) {
-    const tempRes = new Response(body);
-    headers["content-type"] = tempRes.headers.get("content-type");
-    const formDataBlob = await tempRes.blob();
-    return { body: formDataBlob, headers };
-  }
-  if (body instanceof URLSearchParams) {
-    headers["content-type"] = "application/x-www-form-urlencoded";
-    return { body: body.toString(), headers };
-  }
-  if (isAsyncIteratorObject(body)) {
-    headers["content-type"] = "text/event-stream";
-    return { body: undefined, headers };
-  }
-  return { body, headers };
-}
-async function deserializeBody(headers, body, buffer) {
-  const contentType = flattenHeader(headers["content-type"]);
-  const contentDisposition = flattenHeader(headers["content-disposition"]);
-  if (typeof contentDisposition === "string") {
-    const filename = getFilenameFromContentDisposition(contentDisposition) ?? "blob";
-    return new File(buffer === undefined ? [] : [buffer], filename, { type: contentType });
-  }
-  if (contentType?.startsWith("multipart/form-data")) {
-    const tempRes = new Response(buffer, { headers: { "content-type": contentType } });
-    return tempRes.formData();
-  }
-  if (contentType?.startsWith("application/x-www-form-urlencoded") && typeof body === "string") {
-    return new URLSearchParams(body);
-  }
-  return body;
-}
-var JSON_AND_BINARY_DELIMITER = 255;
-async function encodeRawMessage(data, blob) {
-  const json = stringifyJSON(data);
-  if (blob === undefined || blob.size === 0) {
-    return json;
-  }
-  return readAsBuffer(new Blob([
-    new TextEncoder().encode(json),
-    new Uint8Array([JSON_AND_BINARY_DELIMITER]),
-    blob
-  ]));
-}
-async function decodeRawMessage(raw) {
-  if (typeof raw === "string") {
-    return { json: JSON.parse(raw) };
-  }
-  const buffer = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
-  const delimiterIndex = buffer.indexOf(JSON_AND_BINARY_DELIMITER);
-  if (delimiterIndex === -1) {
-    const jsonPart2 = new TextDecoder().decode(buffer);
-    return { json: JSON.parse(jsonPart2) };
-  }
-  const jsonPart = new TextDecoder().decode(buffer.subarray(0, delimiterIndex));
-  const bufferPart = buffer.subarray(delimiterIndex + 1);
-  return {
-    json: JSON.parse(jsonPart),
-    buffer: bufferPart
-  };
-}
-function toEventIterator(queue, id, cleanup, options = {}) {
+// node_modules/@orpc/standard-server-fetch/dist/index.mjs
+function toEventIterator(stream, options = {}) {
+  const eventStream = stream?.pipeThrough(new TextDecoderStream).pipeThrough(new EventDecoderStream);
+  const reader = eventStream?.getReader();
   let span;
+  let isCancelled = false;
   return new AsyncIteratorClass(async () => {
     span ??= startSpan("consume_event_iterator_stream");
     try {
-      const item = await runInSpanContext(span, () => queue.pull(id));
-      switch (item.event) {
-        case "message": {
-          let data = item.data;
-          if (item.meta && isTypescriptObject(data)) {
-            data = withEventMeta(data, item.meta);
-          }
-          span?.addEvent("message");
-          return { value: data, done: false };
+      while (true) {
+        if (reader === undefined) {
+          return { done: true, value: undefined };
         }
-        case "error": {
-          let error = new ErrorEvent({
-            data: item.data
-          });
-          if (item.meta) {
-            error = withEventMeta(error, item.meta);
+        const { done, value: value2 } = await runInSpanContext(span, () => reader.read());
+        if (done) {
+          if (isCancelled) {
+            throw new AbortError("Stream was cancelled");
           }
-          span?.addEvent("error");
-          throw error;
+          return { done: true, value: undefined };
         }
-        case "done": {
-          let data = item.data;
-          if (item.meta && isTypescriptObject(data)) {
-            data = withEventMeta(data, item.meta);
+        switch (value2.event) {
+          case "message": {
+            let message = parseEmptyableJSON(value2.data);
+            if (isTypescriptObject(message)) {
+              message = withEventMeta(message, value2);
+            }
+            span?.addEvent("message");
+            return { done: false, value: message };
           }
-          span?.addEvent("done");
-          return { value: data, done: true };
+          case "error": {
+            let error = new ErrorEvent({
+              data: parseEmptyableJSON(value2.data)
+            });
+            error = withEventMeta(error, value2);
+            span?.addEvent("error");
+            throw error;
+          }
+          case "done": {
+            let done2 = parseEmptyableJSON(value2.data);
+            if (isTypescriptObject(done2)) {
+              done2 = withEventMeta(done2, value2);
+            }
+            span?.addEvent("done");
+            return { done: true, value: done2 };
+          }
+          default: {
+            span?.addEvent("maybe_keepalive");
+          }
         }
       }
     } catch (e) {
@@ -1077,9 +997,10 @@ function toEventIterator(queue, id, cleanup, options = {}) {
   }, async (reason) => {
     try {
       if (reason !== "next") {
+        isCancelled = true;
         span?.addEvent("cancelled");
       }
-      await runInSpanContext(span, () => cleanup(reason));
+      await runInSpanContext(span, () => reader?.cancel());
     } catch (e) {
       setSpanError(span, e, options);
       throw e;
@@ -1088,314 +1009,149 @@ function toEventIterator(queue, id, cleanup, options = {}) {
     }
   });
 }
-function resolveEventIterator(iterator, callback) {
-  return runWithSpan({ name: "stream_event_iterator" }, async (span) => {
-    while (true) {
-      const payload = await (async () => {
-        try {
-          const { value: value2, done } = await iterator.next();
-          if (done) {
-            span?.addEvent("done");
-            return { event: "done", data: value2, meta: getEventMeta(value2) };
-          }
-          span?.addEvent("message");
-          return { event: "message", data: value2, meta: getEventMeta(value2) };
-        } catch (err) {
-          if (err instanceof ErrorEvent) {
-            span?.addEvent("error");
-            return {
-              event: "error",
-              data: err.data,
-              meta: getEventMeta(err)
-            };
-          } else {
-            try {
-              await callback({ event: "error", data: undefined });
-            } catch (err2) {
-              setSpanError(span, err);
-              throw err2;
-            }
-            throw err;
-          }
-        }
-      })();
-      let isInvokeCleanupFn = false;
+function toEventStream(iterator, options = {}) {
+  const keepAliveEnabled = options.eventIteratorKeepAliveEnabled ?? true;
+  const keepAliveInterval = options.eventIteratorKeepAliveInterval ?? 5000;
+  const keepAliveComment = options.eventIteratorKeepAliveComment ?? "";
+  const initialCommentEnabled = options.eventIteratorInitialCommentEnabled ?? true;
+  const initialComment = options.eventIteratorInitialComment ?? "";
+  let cancelled = false;
+  let timeout;
+  let span;
+  const stream = new ReadableStream({
+    start(controller) {
+      span = startSpan("stream_event_iterator");
+      if (initialCommentEnabled) {
+        controller.enqueue(encodeEventMessage({
+          comments: [initialComment]
+        }));
+      }
+    },
+    async pull(controller) {
       try {
-        const direction = await callback(payload);
-        if (payload.event === "done" || payload.event === "error") {
+        if (keepAliveEnabled) {
+          timeout = setInterval(() => {
+            controller.enqueue(encodeEventMessage({
+              comments: [keepAliveComment]
+            }));
+            span?.addEvent("keepalive");
+          }, keepAliveInterval);
+        }
+        const value2 = await runInSpanContext(span, () => iterator.next());
+        clearInterval(timeout);
+        if (cancelled) {
           return;
         }
-        if (direction === "abort") {
-          isInvokeCleanupFn = true;
-          await iterator.return?.();
+        const meta = getEventMeta(value2.value);
+        if (!value2.done || value2.value !== undefined || meta !== undefined) {
+          const event = value2.done ? "done" : "message";
+          controller.enqueue(encodeEventMessage({
+            ...meta,
+            event,
+            data: stringifyJSON(value2.value)
+          }));
+          span?.addEvent(event);
+        }
+        if (value2.done) {
+          controller.close();
+          span?.end();
+        }
+      } catch (err) {
+        clearInterval(timeout);
+        if (cancelled) {
           return;
         }
-      } catch (err) {
-        if (!isInvokeCleanupFn) {
-          try {
-            await iterator.return?.();
-          } catch (err2) {
-            setSpanError(span, err);
-            throw err2;
-          }
+        if (err instanceof ErrorEvent) {
+          controller.enqueue(encodeEventMessage({
+            ...getEventMeta(err),
+            event: "error",
+            data: stringifyJSON(err.data)
+          }));
+          span?.addEvent("error");
+          controller.close();
+        } else {
+          setSpanError(span, err);
+          controller.error(err);
         }
-        throw err;
+        span?.end();
       }
-    }
-  });
-}
-
-class ClientPeer {
-  peer;
-  constructor(send) {
-    this.peer = new experimental_ClientPeerWithoutCodec(async ([id, type, payload]) => {
-      await send(await encodeRequestMessage(id, type, payload));
-    });
-  }
-  get length() {
-    return this.peer.length;
-  }
-  open(id) {
-    return this.peer.open(id);
-  }
-  async request(request) {
-    return this.peer.request(request);
-  }
-  async message(raw) {
-    return this.peer.message(await decodeResponseMessage(raw));
-  }
-  close(options = {}) {
-    return this.peer.close(options);
-  }
-}
-
-class experimental_ClientPeerWithoutCodec {
-  idGenerator = new SequentialIdGenerator;
-  responseQueue = new AsyncIdQueue;
-  serverEventIteratorQueue = new AsyncIdQueue;
-  serverControllers = /* @__PURE__ */ new Map;
-  cleanupFns = /* @__PURE__ */ new Map;
-  send;
-  constructor(send) {
-    this.send = async (message) => {
-      const id = message[0];
-      if (this.serverControllers.has(id)) {
-        await send(message);
-      }
-    };
-  }
-  get length() {
-    return (+this.responseQueue.length + this.serverEventIteratorQueue.length + this.serverControllers.size + this.cleanupFns.size) / 4;
-  }
-  open(id) {
-    this.serverEventIteratorQueue.open(id);
-    this.responseQueue.open(id);
-    const controller = new AbortController;
-    this.serverControllers.set(id, controller);
-    this.cleanupFns.set(id, []);
-    return controller;
-  }
-  async request(request) {
-    const signal = request.signal;
-    return runWithSpan({ name: "send_peer_request", signal }, async () => {
-      if (signal?.aborted) {
-        throw signal.reason;
-      }
-      const id = this.idGenerator.generate();
-      const serverController = this.open(id);
+    },
+    async cancel() {
       try {
-        const otelConfig = getGlobalOtelConfig();
-        if (otelConfig) {
-          const headers = clone(request.headers);
-          otelConfig.propagation.inject(otelConfig.context.active(), headers);
-          request = { ...request, headers };
-        }
-        await this.send([id, MessageType.REQUEST, request]);
-        if (signal?.aborted) {
-          await this.send([id, MessageType.ABORT_SIGNAL, undefined]);
-          throw signal.reason;
-        }
-        let abortListener;
-        signal?.addEventListener("abort", abortListener = async () => {
-          await this.send([id, MessageType.ABORT_SIGNAL, undefined]);
-          this.close({ id, reason: signal.reason });
-        }, { once: true });
-        this.cleanupFns.get(id)?.push(() => {
-          signal?.removeEventListener("abort", abortListener);
-        });
-        if (isAsyncIteratorObject(request.body)) {
-          const iterator = request.body;
-          resolveEventIterator(iterator, async (payload) => {
-            if (serverController.signal.aborted) {
-              return "abort";
-            }
-            await this.send([id, MessageType.EVENT_ITERATOR, payload]);
-            return "next";
-          });
-        }
-        const response = await this.responseQueue.pull(id);
-        if (isEventIteratorHeaders(response.headers)) {
-          const iterator = toEventIterator(this.serverEventIteratorQueue, id, async (reason) => {
-            try {
-              if (reason !== "next") {
-                await this.send([id, MessageType.ABORT_SIGNAL, undefined]);
-              }
-            } finally {
-              this.close({ id });
-            }
-          }, { signal });
-          return {
-            ...response,
-            body: iterator
-          };
-        }
-        this.close({ id });
-        return response;
-      } catch (err) {
-        this.close({ id, reason: err });
-        throw err;
+        cancelled = true;
+        clearInterval(timeout);
+        span?.addEvent("cancelled");
+        await runInSpanContext(span, () => iterator.return?.());
+      } catch (e) {
+        setSpanError(span, e);
+        throw e;
+      } finally {
+        span?.end();
       }
-    });
-  }
-  async message([id, type, payload]) {
-    if (type === MessageType.ABORT_SIGNAL) {
-      this.serverControllers.get(id)?.abort();
-      return;
     }
-    if (type === MessageType.EVENT_ITERATOR) {
-      if (this.serverEventIteratorQueue.isOpen(id)) {
-        this.serverEventIteratorQueue.push(id, payload);
-      }
-      return;
-    }
-    if (!this.responseQueue.isOpen(id)) {
-      return;
-    }
-    this.responseQueue.push(id, payload);
-  }
-  close(options = {}) {
-    if (options.id !== undefined) {
-      this.serverControllers.get(options.id)?.abort(options.reason);
-      this.serverControllers.delete(options.id);
-      this.cleanupFns.get(options.id)?.forEach((fn) => fn());
-      this.cleanupFns.delete(options.id);
-    } else {
-      this.serverControllers.forEach((c) => c.abort(options.reason));
-      this.serverControllers.clear();
-      this.cleanupFns.forEach((fns) => fns.forEach((fn) => fn()));
-      this.cleanupFns.clear();
-    }
-    this.responseQueue.close(options);
-    this.serverEventIteratorQueue.close(options);
-  }
+  }).pipeThrough(new TextEncoderStream);
+  return stream;
 }
-class experimental_ServerPeerWithoutCodec {
-  clientEventIteratorQueue = new AsyncIdQueue;
-  clientControllers = /* @__PURE__ */ new Map;
-  send;
-  constructor(send) {
-    this.send = async (message) => {
-      const id = message[0];
-      if (this.clientControllers.has(id)) {
-        await send(message);
-      }
-    };
-  }
-  get length() {
-    return (this.clientEventIteratorQueue.length + this.clientControllers.size) / 2;
-  }
-  open(id) {
-    this.clientEventIteratorQueue.open(id);
-    const controller = new AbortController;
-    this.clientControllers.set(id, controller);
-    return controller;
-  }
-  async message([id, type, payload], handleRequest) {
-    if (type === MessageType.ABORT_SIGNAL) {
-      this.close({ id, reason: new AbortError("Client aborted the request") });
-      return [id, undefined];
-    }
-    if (type === MessageType.EVENT_ITERATOR) {
-      if (this.clientEventIteratorQueue.isOpen(id)) {
-        this.clientEventIteratorQueue.push(id, payload);
-      }
-      return [id, undefined];
-    }
-    const clientController = this.open(id);
-    const signal = clientController.signal;
-    const request = {
-      ...payload,
-      signal,
-      body: isEventIteratorHeaders(payload.headers) ? toEventIterator(this.clientEventIteratorQueue, id, async (reason) => {
-        if (reason !== "next") {
-          await this.send([id, MessageType.ABORT_SIGNAL, undefined]);
-        }
-      }, { signal }) : payload.body
-    };
-    if (handleRequest) {
-      let context;
-      const otelConfig = getGlobalOtelConfig();
-      if (otelConfig) {
-        context = otelConfig.propagation.extract(otelConfig.context.active(), request.headers);
-      }
-      await runWithSpan({ name: "receive_peer_request", context }, async () => {
-        const response = await runWithSpan({ name: "handle_request" }, async () => {
-          try {
-            return await handleRequest(request);
-          } catch (reason) {
-            this.close({ id, reason, abort: false });
-            throw reason;
-          }
-        });
-        await runWithSpan({ name: "send_peer_response" }, () => this.response(id, response));
+function toStandardBody(re, options = {}) {
+  return runWithSpan({ name: "parse_standard_body", signal: options.signal }, async () => {
+    const contentDisposition = re.headers.get("content-disposition");
+    if (typeof contentDisposition === "string") {
+      const fileName = getFilenameFromContentDisposition(contentDisposition) ?? "blob";
+      const blob2 = await re.blob();
+      return new File([blob2], fileName, {
+        type: blob2.type
       });
     }
-    return [id, request];
-  }
-  async response(id, response) {
-    const signal = this.clientControllers.get(id)?.signal;
-    if (!signal || signal.aborted) {
-      return;
+    const contentType = re.headers.get("content-type");
+    if (!contentType || contentType.startsWith("application/json")) {
+      const text = await re.text();
+      return parseEmptyableJSON(text);
     }
-    try {
-      await this.send([id, MessageType.RESPONSE, response]);
-      if (!signal.aborted && isAsyncIteratorObject(response.body)) {
-        if (response.body instanceof HibernationEventIterator) {
-          response.body.hibernationCallback?.(id);
-        } else {
-          const iterator = response.body;
-          await resolveEventIterator(iterator, async (payload) => {
-            if (signal.aborted) {
-              return "abort";
-            }
-            await this.send([id, MessageType.EVENT_ITERATOR, payload]);
-            return "next";
-          });
-        }
-      }
-      this.close({ id, abort: false });
-    } catch (reason) {
-      this.close({ id, reason, abort: false });
-      throw reason;
+    if (contentType.startsWith("multipart/form-data")) {
+      return await re.formData();
     }
-  }
-  close({ abort = true, ...options } = {}) {
-    if (options.id === undefined) {
-      if (abort) {
-        this.clientControllers.forEach((c) => c.abort(options.reason));
-      }
-      this.clientControllers.clear();
-    } else {
-      if (abort) {
-        this.clientControllers.get(options.id)?.abort(options.reason);
-      }
-      this.clientControllers.delete(options.id);
+    if (contentType.startsWith("application/x-www-form-urlencoded")) {
+      const text = await re.text();
+      return new URLSearchParams(text);
     }
-    this.clientEventIteratorQueue.close(options);
-  }
+    if (contentType.startsWith("text/event-stream")) {
+      return toEventIterator(re.body, options);
+    }
+    if (contentType.startsWith("text/plain")) {
+      return await re.text();
+    }
+    const blob = await re.blob();
+    return new File([blob], "blob", {
+      type: blob.type
+    });
+  });
 }
-
-// node_modules/@orpc/standard-server-fetch/dist/index.mjs
+function toFetchBody(body, headers, options = {}) {
+  const currentContentDisposition = headers.get("content-disposition");
+  headers.delete("content-type");
+  headers.delete("content-disposition");
+  if (body === undefined) {
+    return;
+  }
+  if (body instanceof Blob) {
+    headers.set("content-type", body.type);
+    headers.set("content-length", body.size.toString());
+    headers.set("content-disposition", currentContentDisposition ?? generateContentDisposition(body instanceof File ? body.name : "blob"));
+    return body;
+  }
+  if (body instanceof FormData) {
+    return body;
+  }
+  if (body instanceof URLSearchParams) {
+    return body;
+  }
+  if (isAsyncIteratorObject(body)) {
+    headers.set("content-type", "text/event-stream");
+    return toEventStream(body, options);
+  }
+  headers.set("content-type", "application/json");
+  return stringifyJSON(body);
+}
 function toStandardHeaders(headers, standardHeaders = {}) {
   headers.forEach((value2, key) => {
     if (Array.isArray(standardHeaders[key])) {
@@ -1407,6 +1163,42 @@ function toStandardHeaders(headers, standardHeaders = {}) {
     }
   });
   return standardHeaders;
+}
+function toFetchHeaders(headers, fetchHeaders = new Headers) {
+  for (const [key, value2] of Object.entries(headers)) {
+    if (Array.isArray(value2)) {
+      for (const v of value2) {
+        fetchHeaders.append(key, v);
+      }
+    } else if (value2 !== undefined) {
+      fetchHeaders.append(key, value2);
+    }
+  }
+  return fetchHeaders;
+}
+function toFetchRequest(request, options = {}) {
+  const headers = toFetchHeaders(request.headers);
+  const body = toFetchBody(request.body, headers, options);
+  return new Request(request.url, {
+    signal: request.signal,
+    method: request.method,
+    headers,
+    body
+  });
+}
+function toStandardLazyResponse(response, options = {}) {
+  return {
+    body: once(() => toStandardBody(response, options)),
+    status: response.status,
+    get headers() {
+      const headers = toStandardHeaders(response.headers);
+      Object.defineProperty(this, "headers", { value: headers, writable: true });
+      return headers;
+    },
+    set headers(value2) {
+      Object.defineProperty(this, "headers", { value: value2, writable: true });
+    }
+  };
 }
 
 // node_modules/@orpc/client/dist/shared/client.vZdLqpTj.mjs
@@ -1779,6 +1571,551 @@ class StandardRPCLink extends StandardLink {
   }
 }
 
+// node_modules/@orpc/client/dist/adapters/fetch/index.mjs
+class CompositeLinkFetchPlugin extends CompositeStandardLinkPlugin {
+  initRuntimeAdapter(options) {
+    for (const plugin of this.plugins) {
+      plugin.initRuntimeAdapter?.(options);
+    }
+  }
+}
+
+class LinkFetchClient {
+  fetch;
+  toFetchRequestOptions;
+  adapterInterceptors;
+  constructor(options) {
+    const plugin = new CompositeLinkFetchPlugin(options.plugins);
+    plugin.initRuntimeAdapter(options);
+    this.fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.toFetchRequestOptions = options;
+    this.adapterInterceptors = toArray(options.adapterInterceptors);
+  }
+  async call(standardRequest, options, path, input) {
+    const request = toFetchRequest(standardRequest, this.toFetchRequestOptions);
+    const fetchResponse = await intercept(this.adapterInterceptors, { ...options, request, path, input, init: { redirect: "manual" } }, ({ request: request2, path: path2, input: input2, init, ...options2 }) => this.fetch(request2, init, options2, path2, input2));
+    const lazyResponse = toStandardLazyResponse(fetchResponse, { signal: request.signal });
+    return lazyResponse;
+  }
+}
+
+class RPCLink extends StandardRPCLink {
+  constructor(options) {
+    const linkClient = new LinkFetchClient(options);
+    super(linkClient, options);
+  }
+}
+
+// node_modules/@orpc/standard-server-peer/dist/index.mjs
+var SHORTABLE_ORIGIN_MATCHER = /^http:\/\/orpc\//;
+var MessageType = /* @__PURE__ */ ((MessageType2) => {
+  MessageType2[MessageType2["REQUEST"] = 1] = "REQUEST";
+  MessageType2[MessageType2["RESPONSE"] = 2] = "RESPONSE";
+  MessageType2[MessageType2["EVENT_ITERATOR"] = 3] = "EVENT_ITERATOR";
+  MessageType2[MessageType2["ABORT_SIGNAL"] = 4] = "ABORT_SIGNAL";
+  return MessageType2;
+})(MessageType || {});
+function serializeRequestMessage(id, type, payload) {
+  if (type === 3) {
+    const eventPayload = payload;
+    const serializedPayload2 = {
+      e: eventPayload.event,
+      d: eventPayload.data,
+      m: eventPayload.meta
+    };
+    return { i: id, t: type, p: serializedPayload2 };
+  }
+  if (type === 4) {
+    return { i: id, t: type, p: payload };
+  }
+  const request = payload;
+  const serializedPayload = {
+    u: request.url.toString().replace(SHORTABLE_ORIGIN_MATCHER, "/"),
+    b: request.body,
+    h: Object.keys(request.headers).length > 0 ? request.headers : undefined,
+    m: request.method === "POST" ? undefined : request.method
+  };
+  return {
+    i: id,
+    p: serializedPayload
+  };
+}
+function deserializeResponseMessage(message) {
+  const id = message.i;
+  const type = message.t;
+  if (type === 3) {
+    const payload2 = message.p;
+    return [id, type, { event: payload2.e, data: payload2.d, meta: payload2.m }];
+  }
+  if (type === 4) {
+    return [id, type, message.p];
+  }
+  const payload = message.p;
+  return [id, 2, {
+    status: payload.s ?? 200,
+    headers: payload.h ?? {},
+    body: payload.b
+  }];
+}
+async function encodeRequestMessage(id, type, payload) {
+  if (type === 3 || type === 4) {
+    return encodeRawMessage(serializeRequestMessage(id, type, payload));
+  }
+  const request = payload;
+  const { body: processedBody, headers: processedHeaders } = await serializeBodyAndHeaders(request.body, request.headers);
+  const modifiedRequest = {
+    ...request,
+    body: processedBody instanceof Blob ? undefined : processedBody,
+    headers: processedHeaders
+  };
+  const baseMessage = serializeRequestMessage(id, 1, modifiedRequest);
+  if (processedBody instanceof Blob) {
+    return encodeRawMessage(baseMessage, processedBody);
+  }
+  return encodeRawMessage(baseMessage);
+}
+async function decodeResponseMessage(raw) {
+  const { json: message, buffer } = await decodeRawMessage(raw);
+  const [id, type, payload] = deserializeResponseMessage(message);
+  if (type === 3 || type === 4) {
+    return [id, type, payload];
+  }
+  const response = payload;
+  const body = await deserializeBody(response.headers, response.body, buffer);
+  return [id, type, { ...response, body }];
+}
+async function serializeBodyAndHeaders(body, originalHeaders) {
+  const headers = { ...originalHeaders };
+  const originalContentDisposition = headers["content-disposition"];
+  delete headers["content-type"];
+  delete headers["content-disposition"];
+  if (body instanceof Blob) {
+    headers["content-type"] = body.type;
+    headers["content-disposition"] = originalContentDisposition ?? generateContentDisposition(body instanceof File ? body.name : "blob");
+    return { body, headers };
+  }
+  if (body instanceof FormData) {
+    const tempRes = new Response(body);
+    headers["content-type"] = tempRes.headers.get("content-type");
+    const formDataBlob = await tempRes.blob();
+    return { body: formDataBlob, headers };
+  }
+  if (body instanceof URLSearchParams) {
+    headers["content-type"] = "application/x-www-form-urlencoded";
+    return { body: body.toString(), headers };
+  }
+  if (isAsyncIteratorObject(body)) {
+    headers["content-type"] = "text/event-stream";
+    return { body: undefined, headers };
+  }
+  return { body, headers };
+}
+async function deserializeBody(headers, body, buffer) {
+  const contentType = flattenHeader(headers["content-type"]);
+  const contentDisposition = flattenHeader(headers["content-disposition"]);
+  if (typeof contentDisposition === "string") {
+    const filename = getFilenameFromContentDisposition(contentDisposition) ?? "blob";
+    return new File(buffer === undefined ? [] : [buffer], filename, { type: contentType });
+  }
+  if (contentType?.startsWith("multipart/form-data")) {
+    const tempRes = new Response(buffer, { headers: { "content-type": contentType } });
+    return tempRes.formData();
+  }
+  if (contentType?.startsWith("application/x-www-form-urlencoded") && typeof body === "string") {
+    return new URLSearchParams(body);
+  }
+  return body;
+}
+var JSON_AND_BINARY_DELIMITER = 255;
+async function encodeRawMessage(data, blob) {
+  const json = stringifyJSON(data);
+  if (blob === undefined || blob.size === 0) {
+    return json;
+  }
+  return readAsBuffer(new Blob([
+    new TextEncoder().encode(json),
+    new Uint8Array([JSON_AND_BINARY_DELIMITER]),
+    blob
+  ]));
+}
+async function decodeRawMessage(raw) {
+  if (typeof raw === "string") {
+    return { json: JSON.parse(raw) };
+  }
+  const buffer = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+  const delimiterIndex = buffer.indexOf(JSON_AND_BINARY_DELIMITER);
+  if (delimiterIndex === -1) {
+    const jsonPart2 = new TextDecoder().decode(buffer);
+    return { json: JSON.parse(jsonPart2) };
+  }
+  const jsonPart = new TextDecoder().decode(buffer.subarray(0, delimiterIndex));
+  const bufferPart = buffer.subarray(delimiterIndex + 1);
+  return {
+    json: JSON.parse(jsonPart),
+    buffer: bufferPart
+  };
+}
+function toEventIterator2(queue, id, cleanup, options = {}) {
+  let span;
+  return new AsyncIteratorClass(async () => {
+    span ??= startSpan("consume_event_iterator_stream");
+    try {
+      const item = await runInSpanContext(span, () => queue.pull(id));
+      switch (item.event) {
+        case "message": {
+          let data = item.data;
+          if (item.meta && isTypescriptObject(data)) {
+            data = withEventMeta(data, item.meta);
+          }
+          span?.addEvent("message");
+          return { value: data, done: false };
+        }
+        case "error": {
+          let error = new ErrorEvent({
+            data: item.data
+          });
+          if (item.meta) {
+            error = withEventMeta(error, item.meta);
+          }
+          span?.addEvent("error");
+          throw error;
+        }
+        case "done": {
+          let data = item.data;
+          if (item.meta && isTypescriptObject(data)) {
+            data = withEventMeta(data, item.meta);
+          }
+          span?.addEvent("done");
+          return { value: data, done: true };
+        }
+      }
+    } catch (e) {
+      if (!(e instanceof ErrorEvent)) {
+        setSpanError(span, e, options);
+      }
+      throw e;
+    }
+  }, async (reason) => {
+    try {
+      if (reason !== "next") {
+        span?.addEvent("cancelled");
+      }
+      await runInSpanContext(span, () => cleanup(reason));
+    } catch (e) {
+      setSpanError(span, e, options);
+      throw e;
+    } finally {
+      span?.end();
+    }
+  });
+}
+function resolveEventIterator(iterator, callback) {
+  return runWithSpan({ name: "stream_event_iterator" }, async (span) => {
+    while (true) {
+      const payload = await (async () => {
+        try {
+          const { value: value2, done } = await iterator.next();
+          if (done) {
+            span?.addEvent("done");
+            return { event: "done", data: value2, meta: getEventMeta(value2) };
+          }
+          span?.addEvent("message");
+          return { event: "message", data: value2, meta: getEventMeta(value2) };
+        } catch (err) {
+          if (err instanceof ErrorEvent) {
+            span?.addEvent("error");
+            return {
+              event: "error",
+              data: err.data,
+              meta: getEventMeta(err)
+            };
+          } else {
+            try {
+              await callback({ event: "error", data: undefined });
+            } catch (err2) {
+              setSpanError(span, err);
+              throw err2;
+            }
+            throw err;
+          }
+        }
+      })();
+      let isInvokeCleanupFn = false;
+      try {
+        const direction = await callback(payload);
+        if (payload.event === "done" || payload.event === "error") {
+          return;
+        }
+        if (direction === "abort") {
+          isInvokeCleanupFn = true;
+          await iterator.return?.();
+          return;
+        }
+      } catch (err) {
+        if (!isInvokeCleanupFn) {
+          try {
+            await iterator.return?.();
+          } catch (err2) {
+            setSpanError(span, err);
+            throw err2;
+          }
+        }
+        throw err;
+      }
+    }
+  });
+}
+
+class ClientPeer {
+  peer;
+  constructor(send) {
+    this.peer = new experimental_ClientPeerWithoutCodec(async ([id, type, payload]) => {
+      await send(await encodeRequestMessage(id, type, payload));
+    });
+  }
+  get length() {
+    return this.peer.length;
+  }
+  open(id) {
+    return this.peer.open(id);
+  }
+  async request(request) {
+    return this.peer.request(request);
+  }
+  async message(raw) {
+    return this.peer.message(await decodeResponseMessage(raw));
+  }
+  close(options = {}) {
+    return this.peer.close(options);
+  }
+}
+
+class experimental_ClientPeerWithoutCodec {
+  idGenerator = new SequentialIdGenerator;
+  responseQueue = new AsyncIdQueue;
+  serverEventIteratorQueue = new AsyncIdQueue;
+  serverControllers = /* @__PURE__ */ new Map;
+  cleanupFns = /* @__PURE__ */ new Map;
+  send;
+  constructor(send) {
+    this.send = async (message) => {
+      const id = message[0];
+      if (this.serverControllers.has(id)) {
+        await send(message);
+      }
+    };
+  }
+  get length() {
+    return (+this.responseQueue.length + this.serverEventIteratorQueue.length + this.serverControllers.size + this.cleanupFns.size) / 4;
+  }
+  open(id) {
+    this.serverEventIteratorQueue.open(id);
+    this.responseQueue.open(id);
+    const controller = new AbortController;
+    this.serverControllers.set(id, controller);
+    this.cleanupFns.set(id, []);
+    return controller;
+  }
+  async request(request) {
+    const signal = request.signal;
+    return runWithSpan({ name: "send_peer_request", signal }, async () => {
+      if (signal?.aborted) {
+        throw signal.reason;
+      }
+      const id = this.idGenerator.generate();
+      const serverController = this.open(id);
+      try {
+        const otelConfig = getGlobalOtelConfig();
+        if (otelConfig) {
+          const headers = clone(request.headers);
+          otelConfig.propagation.inject(otelConfig.context.active(), headers);
+          request = { ...request, headers };
+        }
+        await this.send([id, MessageType.REQUEST, request]);
+        if (signal?.aborted) {
+          await this.send([id, MessageType.ABORT_SIGNAL, undefined]);
+          throw signal.reason;
+        }
+        let abortListener;
+        signal?.addEventListener("abort", abortListener = async () => {
+          await this.send([id, MessageType.ABORT_SIGNAL, undefined]);
+          this.close({ id, reason: signal.reason });
+        }, { once: true });
+        this.cleanupFns.get(id)?.push(() => {
+          signal?.removeEventListener("abort", abortListener);
+        });
+        if (isAsyncIteratorObject(request.body)) {
+          const iterator = request.body;
+          resolveEventIterator(iterator, async (payload) => {
+            if (serverController.signal.aborted) {
+              return "abort";
+            }
+            await this.send([id, MessageType.EVENT_ITERATOR, payload]);
+            return "next";
+          });
+        }
+        const response = await this.responseQueue.pull(id);
+        if (isEventIteratorHeaders(response.headers)) {
+          const iterator = toEventIterator2(this.serverEventIteratorQueue, id, async (reason) => {
+            try {
+              if (reason !== "next") {
+                await this.send([id, MessageType.ABORT_SIGNAL, undefined]);
+              }
+            } finally {
+              this.close({ id });
+            }
+          }, { signal });
+          return {
+            ...response,
+            body: iterator
+          };
+        }
+        this.close({ id });
+        return response;
+      } catch (err) {
+        this.close({ id, reason: err });
+        throw err;
+      }
+    });
+  }
+  async message([id, type, payload]) {
+    if (type === MessageType.ABORT_SIGNAL) {
+      this.serverControllers.get(id)?.abort();
+      return;
+    }
+    if (type === MessageType.EVENT_ITERATOR) {
+      if (this.serverEventIteratorQueue.isOpen(id)) {
+        this.serverEventIteratorQueue.push(id, payload);
+      }
+      return;
+    }
+    if (!this.responseQueue.isOpen(id)) {
+      return;
+    }
+    this.responseQueue.push(id, payload);
+  }
+  close(options = {}) {
+    if (options.id !== undefined) {
+      this.serverControllers.get(options.id)?.abort(options.reason);
+      this.serverControllers.delete(options.id);
+      this.cleanupFns.get(options.id)?.forEach((fn) => fn());
+      this.cleanupFns.delete(options.id);
+    } else {
+      this.serverControllers.forEach((c) => c.abort(options.reason));
+      this.serverControllers.clear();
+      this.cleanupFns.forEach((fns) => fns.forEach((fn) => fn()));
+      this.cleanupFns.clear();
+    }
+    this.responseQueue.close(options);
+    this.serverEventIteratorQueue.close(options);
+  }
+}
+class experimental_ServerPeerWithoutCodec {
+  clientEventIteratorQueue = new AsyncIdQueue;
+  clientControllers = /* @__PURE__ */ new Map;
+  send;
+  constructor(send) {
+    this.send = async (message) => {
+      const id = message[0];
+      if (this.clientControllers.has(id)) {
+        await send(message);
+      }
+    };
+  }
+  get length() {
+    return (this.clientEventIteratorQueue.length + this.clientControllers.size) / 2;
+  }
+  open(id) {
+    this.clientEventIteratorQueue.open(id);
+    const controller = new AbortController;
+    this.clientControllers.set(id, controller);
+    return controller;
+  }
+  async message([id, type, payload], handleRequest) {
+    if (type === MessageType.ABORT_SIGNAL) {
+      this.close({ id, reason: new AbortError("Client aborted the request") });
+      return [id, undefined];
+    }
+    if (type === MessageType.EVENT_ITERATOR) {
+      if (this.clientEventIteratorQueue.isOpen(id)) {
+        this.clientEventIteratorQueue.push(id, payload);
+      }
+      return [id, undefined];
+    }
+    const clientController = this.open(id);
+    const signal = clientController.signal;
+    const request = {
+      ...payload,
+      signal,
+      body: isEventIteratorHeaders(payload.headers) ? toEventIterator2(this.clientEventIteratorQueue, id, async (reason) => {
+        if (reason !== "next") {
+          await this.send([id, MessageType.ABORT_SIGNAL, undefined]);
+        }
+      }, { signal }) : payload.body
+    };
+    if (handleRequest) {
+      let context;
+      const otelConfig = getGlobalOtelConfig();
+      if (otelConfig) {
+        context = otelConfig.propagation.extract(otelConfig.context.active(), request.headers);
+      }
+      await runWithSpan({ name: "receive_peer_request", context }, async () => {
+        const response = await runWithSpan({ name: "handle_request" }, async () => {
+          try {
+            return await handleRequest(request);
+          } catch (reason) {
+            this.close({ id, reason, abort: false });
+            throw reason;
+          }
+        });
+        await runWithSpan({ name: "send_peer_response" }, () => this.response(id, response));
+      });
+    }
+    return [id, request];
+  }
+  async response(id, response) {
+    const signal = this.clientControllers.get(id)?.signal;
+    if (!signal || signal.aborted) {
+      return;
+    }
+    try {
+      await this.send([id, MessageType.RESPONSE, response]);
+      if (!signal.aborted && isAsyncIteratorObject(response.body)) {
+        if (response.body instanceof HibernationEventIterator) {
+          response.body.hibernationCallback?.(id);
+        } else {
+          const iterator = response.body;
+          await resolveEventIterator(iterator, async (payload) => {
+            if (signal.aborted) {
+              return "abort";
+            }
+            await this.send([id, MessageType.EVENT_ITERATOR, payload]);
+            return "next";
+          });
+        }
+      }
+      this.close({ id, abort: false });
+    } catch (reason) {
+      this.close({ id, reason, abort: false });
+      throw reason;
+    }
+  }
+  close({ abort = true, ...options } = {}) {
+    if (options.id === undefined) {
+      if (abort) {
+        this.clientControllers.forEach((c) => c.abort(options.reason));
+      }
+      this.clientControllers.clear();
+    } else {
+      if (abort) {
+        this.clientControllers.get(options.id)?.abort(options.reason);
+      }
+      this.clientControllers.delete(options.id);
+    }
+    this.clientEventIteratorQueue.close(options);
+  }
+}
+
 // node_modules/@orpc/client/dist/adapters/websocket/index.mjs
 var WEBSOCKET_CONNECTING = 0;
 
@@ -1812,25 +2149,27 @@ class LinkWebsocketClient {
   }
 }
 
-class RPCLink extends StandardRPCLink {
+class RPCLink2 extends StandardRPCLink {
   constructor(options) {
     const linkClient = new LinkWebsocketClient(options);
     super(linkClient, { ...options, url: "http://orpc" });
   }
 }
 
-// src/orpc/vm-api/client.ts
+// src/server/client.ts
 var websocket = new WebSocket("ws://localhost:3000");
-var link = new RPCLink({
+var vmLink = new RPCLink2({
   websocket
 });
-var vmClient = createORPCClient(link);
+var vmClient = createORPCClient(vmLink);
+var judgeLink = new RPCLink({
+  url: "http://localhost:3000"
+});
+var judgeClient = createORPCClient(judgeLink);
 
 // src/guest.ts
 var main = async () => {
-  const decoder = new TextDecoder;
-  let alive = true;
-  while (alive) {
+  while (true) {
     await Bun.sleep(1000);
     console.log("waiting for job...");
     const { data, error } = await tryCatch(vmClient.requestJob());
@@ -1839,24 +2178,26 @@ var main = async () => {
       await Bun.sleep(1000);
       continue;
     }
-    const { jobType } = data;
-    const result = await $`echo "${jobType}"`;
-    const { data: submitData, error: submitErr } = await tryCatch(vmClient.submitJob({
-      exitCode: result.exitCode,
-      stdout: decoder.decode(result.stdout),
-      stderr: decoder.decode(result.stderr)
-    }));
-    if (submitErr) {
-      console.error("Submit error: ", submitErr);
-      await Bun.sleep(1000);
-      continue;
-    }
-    const { action } = submitData;
-    if (action === "die") {
-      console.log("Shutting down...");
-      alive = false;
+    if (data) {
+      const fileBuf = data.file;
+      const txt = fileBuf.toString();
+      console.log("Submitting job result...");
+      const { action } = await vmClient.submitJobResult({
+        status: "wrong-answer",
+        runtimeMs: 100,
+        memoryKb: 100,
+        stdout: txt,
+        stderr: "",
+        type: "result",
+        id: data.id
+      });
+      if (action === "continue") {
+        console.log("Continuing...");
+      } else {
+        await $`reboot -f`;
+      }
     } else {
-      console.log("Continuing...");
+      continue;
     }
   }
 };

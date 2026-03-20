@@ -2,10 +2,14 @@ import Redis from "ioredis";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { baseLogger } from "./lib/logger";
+import { tryCatch } from "./lib/utils";
+import { judgeClient } from "./server/client";
 import type { VmConfig } from "./vm";
 import { VmOrchestrator } from "./vm/orchestrator";
 
 const vmroot = "/tmp/vmroot";
+const redis = new Redis();
+await redis.flushall();
 
 const conf: VmConfig = {
   jail: join(vmroot, "jail"),
@@ -18,9 +22,9 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
-await using pool = new VmOrchestrator(conf);
+await using orchestrator = await VmOrchestrator.create(conf);
 for (let i = 0; i < 3; i++) {
-  const id = await pool.spawnVm(`vm${String(i)}`);
+  const id = await orchestrator.spawnVm(`vm${String(i)}`);
   baseLogger.info(`Spawned VM with id ${id}`);
 }
 
@@ -37,7 +41,6 @@ const cleanup = async () => {
   baseLogger.info("Graceful Shutdown: Goodbye");
 };
 
-const redis = new Redis();
 for await (const line of rl) {
   const segments = line
     .trim()
@@ -52,8 +55,26 @@ for await (const line of rl) {
   if (segments[0] === "exit") {
     await cleanup();
     break;
-  } else if (segments[0] === "script" && segments[1]) {
-    await redis.lpush("script", segments[1]);
+  } else if (segments[0] === "submit") {
+    const txt = segments.slice(1).join(" ").trim();
+    if (!txt) {
+      baseLogger.error("Must specify text for job submission");
+    }
+
+    const file = new File([txt], "submission.cpp");
+    const { data: iter, error } = await tryCatch(
+      judgeClient.submit({ lang: "cpp", file }),
+    );
+    if (error) {
+      baseLogger.error(error, "failed to submit");
+      continue;
+    }
+
+    for await (const val of iter) {
+      console.log("--------");
+      console.log(JSON.stringify(val, null, 2));
+      console.log("--------");
+    }
   } else if (segments[0] === "view") {
     const res = await redis.lrange("script", 0, -1);
     console.log(res);

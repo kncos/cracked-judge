@@ -1,11 +1,10 @@
 import { $ } from "bun";
 import { tryCatch } from "./lib/utils";
-import { vmClient } from "./orpc/client";
+import { vmClient } from "./server/client";
 
 const main = async () => {
-  const decoder = new TextDecoder();
-  let alive = true;
-  while (alive) {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  while (true) {
     await Bun.sleep(1000);
     console.log("waiting for job...");
     const { data, error } = await tryCatch(vmClient.requestJob());
@@ -14,27 +13,28 @@ const main = async () => {
       await Bun.sleep(1000);
       continue;
     }
-    const { jobType } = data;
-    const result = await $`echo "${jobType}"`;
-    const { data: submitData, error: submitErr } = await tryCatch(
-      vmClient.submitJob({
-        exitCode: result.exitCode,
-        stdout: decoder.decode(result.stdout),
-        stderr: decoder.decode(result.stderr),
-      }),
-    );
-    if (submitErr) {
-      console.error("Submit error: ", submitErr);
-      await Bun.sleep(1000);
-      continue;
-    }
 
-    const { action } = submitData;
-    if (action === "die") {
-      console.log("Shutting down...");
-      alive = false;
+    if (data) {
+      const fileBuf = data.file;
+      const txt = fileBuf.toString();
+      console.log("Submitting job result...");
+      const { action } = await vmClient.submitJobResult({
+        status: "wrong-answer",
+        runtimeMs: 100,
+        memoryKb: 100,
+        stdout: txt,
+        stderr: "",
+        type: "result",
+        id: data.id,
+      });
+
+      if (action === "continue") {
+        console.log("Continuing...");
+      } else {
+        await $`reboot -f`;
+      }
     } else {
-      console.log("Continuing...");
+      continue;
     }
   }
 };

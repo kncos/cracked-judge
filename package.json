@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "build": "bun run build:host;bun run build:guest",
-    "build:host": "bun build --target=bun --outfile=./vmroot/base/host.js src/host.ts",
+    "build:host": "bun build --target=bun --outfile=host.js src/host.ts",
     "build:guest": "bun build --target=bun --outfile=./mkosi/mkosi.extra/app/guest.js src/guest.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"

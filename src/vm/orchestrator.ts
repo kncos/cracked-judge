@@ -1,5 +1,5 @@
 import { baseLogger } from "@/lib/logger";
-import { VmServer } from "@/orpc/server";
+import { Server } from "@/server/server";
 import type { VmConfig } from ".";
 import {
   AsyncDisposableMap,
@@ -10,10 +10,27 @@ import { VM } from "./vm";
 
 export class VmOrchestrator implements AsyncDisposable {
   private resources: AsyncDisposableMap<string, VM> = new AsyncDisposableMap();
-  private server: VmServer;
-  public constructor(public readonly conf: VmConfig) {
-    this.server = VmServer.create();
-  }
+  // private server: Server;
+  private constructor(
+    public readonly conf: VmConfig,
+    private readonly server: Server,
+  ) {}
+
+  public static create = async (vmConf: VmConfig) => {
+    const server = await Server.create();
+    return new VmOrchestrator(vmConf, server);
+  };
+
+  public destroy = async () => {
+    try {
+      await this.server.destroy();
+      await this.resources[Symbol.asyncDispose]();
+    } catch (error) {
+      if (error instanceof MultiAsyncDisposeError) {
+        baseLogger.error(error.cause, "Failed to dispose of VM orchestrator!");
+      }
+    }
+  };
 
   spawnVm = async (vmId?: string): Promise<string> => {
     const id =
@@ -41,13 +58,6 @@ export class VmOrchestrator implements AsyncDisposable {
   };
 
   async [Symbol.asyncDispose]() {
-    try {
-      await this.server.destroy();
-      await this.resources[Symbol.asyncDispose]();
-    } catch (error) {
-      if (error instanceof MultiAsyncDisposeError) {
-        baseLogger.error(error.cause, "Failed to dispose of VM orchestrator!");
-      }
-    }
+    await this.destroy();
   }
 }

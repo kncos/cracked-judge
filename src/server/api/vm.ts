@@ -8,6 +8,9 @@ export const vm = {
     .output(zJobResolved.nullable())
     .handler(async ({ context }) => {
       const { redis } = context;
+      if (!redis || redis.status !== "ready") {
+        context.serverLogger.error("NO REDIS?");
+      }
 
       const data = await consumeJob(redis, 0);
       return data;

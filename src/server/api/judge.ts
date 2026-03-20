@@ -12,28 +12,39 @@ export const judge = {
     .input(zJob)
     .output(eventIterator(zJobStatusOrResult))
     .handler(async function* ({ input, context }) {
-      const { redis } = context;
+      const { redisPool, serverLogger } = context;
+
       await enqueueJob(redis, input);
 
-      const consumer = await JobStatusConsumer.create(redis, input.id, 10000);
-      for await (const status of consumer) {
-        if (status.status === "completed") {
-          const result = await fetchJobResult(redis, input.id);
-          if (result === null) {
-            throw new Error("failed to get job?");
-          }
-          yield status;
-          yield result;
-          return;
-        } else if (status.status === "timed-out") {
-          const result = await fetchJobResult(redis, input.id);
-          if (result === null) {
+      await using consumer = await JobStatusConsumer.create(
+        redis,
+        input.id,
+        10000,
+      );
+      try {
+        for await (const status of consumer) {
+          if (status.status === "completed") {
+            await consumer.destroy();
+            const result = await fetchJobResult(redis, input.id);
+            if (result === null) {
+              throw new Error("failed to get job?");
+            }
             yield status;
-          } else {
             yield result;
+            return;
+          } else if (status.status === "timed-out") {
+            await consumer.destroy();
+            const result = await fetchJobResult(redis, input.id);
+            if (result === null) {
+              yield status;
+            } else {
+              yield result;
+            }
+            return;
           }
-          return;
         }
+      } catch (e) {
+        serverLogger.error({ e }, "Encountered error in the consumer loop");
       }
 
       yield { status: "timed-out", type: "status", id: input.id };
