@@ -1,4 +1,4 @@
-import { zJobResolved, zJobResult, zJobStatus } from "@/orpc/schemas";
+import { zJobResolved, zJobResult, zJobStatus } from "@/server/schemas";
 import { isReplyError } from "@/types/redis";
 import { on } from "events";
 import Redis from "ioredis";

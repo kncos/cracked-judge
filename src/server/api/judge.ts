@@ -2,7 +2,7 @@ import {
   enqueueJob,
   fetchJobResult,
   JobStatusConsumer,
-} from "@/orpc/typed-redis";
+} from "@/server/typed-redis";
 import { eventIterator } from "@orpc/server";
 import { publicRoute } from "../orpc";
 import { zJob, zJobStatusOrResult } from "../schemas";
