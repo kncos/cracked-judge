@@ -1,44 +1,84 @@
-/* eslint-disable @typescript-eslint/no-unnecessary-condition */
-import { DisposableRedis } from "./lib/redis-registry";
+import { createORPCClient } from "@orpc/client";
+import { RPCLink } from "@orpc/client/fetch";
+import { os, type RouterClient } from "@orpc/server";
+import { RPCHandler } from "@orpc/server/fetch";
+import { CORSPlugin } from "@orpc/server/plugins";
+import z from "zod";
 
-const test = async (signal?: AbortSignal) => {
-  await using redis = new DisposableRedis();
-  if (signal?.aborted) return null;
+const r1 = {
+  add: os
+    .input(
+      z.object({
+        a: z.number(),
+        b: z.number(),
+      }),
+    )
+    .output(z.number())
+    .handler(async ({ input, context }) => {
+      return input.a + input.b;
+    }),
+};
+const r2 = {
+  sub: os
+    .input(
+      z.object({
+        a: z.number(),
+        b: z.number(),
+      }),
+    )
+    .output(z.number())
+    .handler(async ({ input, context }) => {
+      return input.a - input.b;
+    }),
+};
 
-  let disconnected: boolean = false;
+const root = {
+  r1,
+  r2,
+};
 
-  const abort = () => {
-    disconnected = true;
-    redis.disconnect();
-  };
+const h1 = new RPCHandler(r1, {
+  plugins: [new CORSPlugin()],
+});
+const h2 = new RPCHandler(r2);
 
-  signal?.addEventListener("abort", abort, { once: true });
+const rootHandler = new RPCHandler(root);
 
-  try {
-    const result = await redis.brpop("some-queue", 10);
-    if (disconnected) {
-      console.log("Disconnected");
-      return;
+const server = Bun.serve({
+  hostname: "localhost",
+  port: 3000,
+  async fetch(req) {
+    const { matched, response } = await rootHandler.handle(req);
+    if (matched) {
+      return response;
     }
+    return new Response("Not Found", { status: 404 });
+  },
+});
 
-    console.log(result);
-  } catch (error) {
-    console.log("catching exception. disconnected:", disconnected);
-    if (disconnected) return null;
-    throw error;
-  } finally {
-    console.log("removing event listener");
-    signal?.removeEventListener("abort", abort);
-  }
-};
+const link1 = new RPCLink({
+  url: "http://localhost:3000",
+});
 
-const main = async () => {
-  const controller = new AbortController();
-  void test(controller.signal);
+const link2 = new RPCLink({
+  url: "http://localhost:3000",
+});
 
-  await Bun.sleep(5000).then(() => {
-    controller.abort();
-  });
+await Bun.sleep(1000);
 
-  return;
-};
+export const client1: RouterClient<typeof root> = createORPCClient(link1);
+export const client2: RouterClient<typeof root> = createORPCClient(link2);
+
+const c1_res = await client1.r1.add({
+  a: 1,
+  b: 2,
+});
+
+const c2_res = await client2.r2.sub({
+  a: 1,
+  b: 2,
+});
+
+console.log(c1_res, c2_res);
+
+await server.stop();
