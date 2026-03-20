@@ -1,5 +1,13 @@
 import { createRedisPool, type RedisPool } from "@/lib/redis-pool";
-import { zJobResolved, zJobResult, zJobStatus } from "@/server/schemas";
+import {
+  deserializeJob,
+  deserializeJobResult,
+  serializeJob,
+  serializeJobResult,
+  zJob,
+  zJobResult,
+  zJobStatus,
+} from "@/server/schemas";
 import { DisposableRedis, isReplyError } from "@/types/redis";
 import { on } from "events";
 import Redis from "ioredis";
@@ -88,23 +96,17 @@ const keys = {
 };
 
 // submit any job
-export async function enqueueJob(
-  redis: Redis,
-  input: z.infer<typeof zJobResolved>,
-) {
+export async function enqueueJob(redis: Redis, input: z.infer<typeof zJob>) {
   const jobKey = keys.job(input.id);
-  const fileKey = keys.jobFile(input.id);
+  const serialized = await serializeJob(input);
   try {
-    const { file, ...rest } = input;
-    await redis.hset(jobKey, rest);
-    await redis.set(fileKey, file);
+    await redis.set(jobKey, serialized);
     //! note: this comes last because if not, its a race condition!
     await redis.lpush(JOB_QUEUE, input.id);
     redisLogger.info(
       {
         JOB_QUEUE,
         jobKey,
-        fileKey,
       },
       "Enqueued job",
     );
@@ -117,7 +119,7 @@ export async function enqueueJob(
 export async function consumeJob(
   redis: Redis,
   timeout: number,
-): Promise<z.infer<typeof zJobResolved> | null> {
+): Promise<z.infer<typeof zJob> | null> {
   try {
     const result = await redis.brpop(JOB_QUEUE, timeout);
     // timed out
@@ -127,26 +129,16 @@ export async function consumeJob(
     const [_, jobId] = result;
     // fetch from set and parse
     const jobKey = keys.job(jobId);
-    const fileKey = keys.jobFile(jobId);
-    const hgetData = await redis.hgetall(jobKey);
-    const file = await redis.getBuffer(fileKey);
+    const rawJob = await redis.getBuffer(jobKey);
+    if (rawJob === null) {
+      redisLogger.warn({ jobKey }, "Null job for this key");
+      return null;
+    }
+    redisLogger.info({ jobKey }, "Dequeued job");
 
-    redisLogger.info(
-      {
-        fileKey,
-        jobKey,
-        file: file?.toString() || null,
-        hgetData,
-      },
-      "Dequeued job",
-    );
-
-    const parsed = zJobResolved.parse({
-      ...hgetData,
-      file,
-    });
-    await redis.del(jobKey, fileKey);
-    return parsed;
+    const job = deserializeJob(rawJob);
+    await redis.del(jobKey);
+    return job;
   } catch (error) {
     // returns never -- satisfies ts
     return handleError("consumeJob", error);
@@ -160,7 +152,10 @@ export async function submitJobResult(
 ) {
   const key = keys.result(input.id);
   try {
-    await redis.hset(key, input);
+    await redis.set(key, serializeJobResult(input));
+    redisLogger.info(
+      `Submitted result for key: ${key}, ${JSON.stringify(input, null, 2)}`,
+    );
   } catch (error) {
     return handleError("submitJobResult", error, { key });
   }
@@ -173,9 +168,14 @@ export async function fetchJobResult(
 ): Promise<z.infer<typeof zJobResult> | null> {
   const key = keys.result(jobId);
   try {
-    const data = await redis.hgetall(key);
-    const parsed = zJobResult.safeParse(data);
-    return parsed.success ? parsed.data : null;
+    const data = await redis.getBuffer(key);
+    if (data === null) return null;
+
+    const parsed = deserializeJobResult(data);
+    redisLogger.info(
+      `Getting job result for ${key}, data: ${JSON.stringify(parsed, null, 2)}`,
+    );
+    return parsed;
   } catch (error) {
     return handleError("fetchJobResult", error, { key });
   }
@@ -297,7 +297,7 @@ export class RedisManager {
     await this.redisPool.clear();
   };
 
-  enqueueJob = async (input: z.infer<typeof zJobResolved>) => {
+  enqueueJob = async (input: z.infer<typeof zJob>) => {
     const redis = await this.redisPool.acquire();
     try {
       await enqueueJob(redis, input);
@@ -389,3 +389,32 @@ export class RedisManager {
     await this.destoy();
   }
 }
+
+// [14:49:09.684] INFO (1095650): [REDIS] Submitted result for key: result:883dbcfa-a194-485c-a47c-42d3ffe0605d, {
+//   "id": "883dbcfa-a194-485c-a47c-42d3ffe0605d",
+//   "type": "result",
+//   "status": "wrong-answer",
+//   "runtimeMs": 100,
+//   "memoryKb": 100,
+//   "stdout": "wasd",
+//   "stderr": ""
+// }
+// [14:49:09.685] INFO (1095650): [server] Received a job result
+//     id: "883dbcfa-a194-485c-a47c-42d3ffe0605d"
+//     type: "result"
+//     status: "wrong-answer"
+//     runtimeMs: 100
+//     memoryKb: 100
+//     stdout: "wasd"
+//     stderr: ""
+// [14:49:09.685] TRACE (1095650): [server] submitJobResult: time elapsed 3ms
+// [14:49:09.686] TRACE (1095650): [vm0] (pid 1095688) Continuing...
+// [14:49:09.687] INFO (1095650): [REDIS] Getting job result for result:883dbcfa-a194-485c-a47c-42d3ffe0605d, data: {
+//   "id": "883dbcfa-a194-485c-a47c-42d3ffe0605d",
+//   "type": "result",
+//   "status": "wrong-answer",
+//   "runtimeMs": "100",
+//   "memoryKb": "100",
+//   "stdout": "wasd",
+//   "stderr": ""
+// }, parser success: false

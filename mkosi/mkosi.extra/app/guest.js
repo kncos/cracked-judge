@@ -2179,8 +2179,8 @@ var main = async () => {
       continue;
     }
     if (data) {
-      const fileBuf = data.file;
-      const txt = fileBuf.toString();
+      const file = data.file;
+      const txt = Buffer.from(await file.bytes()).toString();
       console.log("Submitting job result...", txt);
       const { action } = await vmClient.submitJobResult({
         status: "wrong-answer",

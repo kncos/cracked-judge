@@ -6,12 +6,7 @@ export const vm = {
   requestJob: vmRoute.output(zJob.nullable()).handler(async ({ context }) => {
     const { redisManager } = context;
     const data = await redisManager.consumeJob(0);
-    if (data === null) return null;
-
-    return {
-      ...data,
-      file: new File([data.file], "hello"),
-    };
+    return data;
   }),
   submitJobStatus: vmRoute
     .input(zJobStatus)

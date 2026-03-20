@@ -14214,6 +14214,577 @@ var require_pino = __commonJS((exports, module) => {
   module.exports.pino = pino;
 });
 
+// node_modules/detect-libc/lib/process.js
+var require_process = __commonJS((exports, module) => {
+  var isLinux = () => process.platform === "linux";
+  var report = null;
+  var getReport = () => {
+    if (!report) {
+      if (isLinux() && process.report) {
+        const orig = process.report.excludeNetwork;
+        process.report.excludeNetwork = true;
+        report = process.report.getReport();
+        process.report.excludeNetwork = orig;
+      } else {
+        report = {};
+      }
+    }
+    return report;
+  };
+  module.exports = { isLinux, getReport };
+});
+
+// node_modules/detect-libc/lib/filesystem.js
+var require_filesystem = __commonJS((exports, module) => {
+  var fs = __require("fs");
+  var LDD_PATH = "/usr/bin/ldd";
+  var SELF_PATH = "/proc/self/exe";
+  var MAX_LENGTH = 2048;
+  var readFileSync = (path) => {
+    const fd = fs.openSync(path, "r");
+    const buffer = Buffer.alloc(MAX_LENGTH);
+    const bytesRead = fs.readSync(fd, buffer, 0, MAX_LENGTH, 0);
+    fs.close(fd, () => {});
+    return buffer.subarray(0, bytesRead);
+  };
+  var readFile = (path) => new Promise((resolve, reject) => {
+    fs.open(path, "r", (err, fd) => {
+      if (err) {
+        reject(err);
+      } else {
+        const buffer = Buffer.alloc(MAX_LENGTH);
+        fs.read(fd, buffer, 0, MAX_LENGTH, 0, (_, bytesRead) => {
+          resolve(buffer.subarray(0, bytesRead));
+          fs.close(fd, () => {});
+        });
+      }
+    });
+  });
+  module.exports = {
+    LDD_PATH,
+    SELF_PATH,
+    readFileSync,
+    readFile
+  };
+});
+
+// node_modules/detect-libc/lib/elf.js
+var require_elf = __commonJS((exports, module) => {
+  var interpreterPath = (elf) => {
+    if (elf.length < 64) {
+      return null;
+    }
+    if (elf.readUInt32BE(0) !== 2135247942) {
+      return null;
+    }
+    if (elf.readUInt8(4) !== 2) {
+      return null;
+    }
+    if (elf.readUInt8(5) !== 1) {
+      return null;
+    }
+    const offset = elf.readUInt32LE(32);
+    const size = elf.readUInt16LE(54);
+    const count = elf.readUInt16LE(56);
+    for (let i = 0;i < count; i++) {
+      const headerOffset = offset + i * size;
+      const type2 = elf.readUInt32LE(headerOffset);
+      if (type2 === 3) {
+        const fileOffset = elf.readUInt32LE(headerOffset + 8);
+        const fileSize = elf.readUInt32LE(headerOffset + 32);
+        return elf.subarray(fileOffset, fileOffset + fileSize).toString().replace(/\0.*$/g, "");
+      }
+    }
+    return null;
+  };
+  module.exports = {
+    interpreterPath
+  };
+});
+
+// node_modules/detect-libc/lib/detect-libc.js
+var require_detect_libc = __commonJS((exports, module) => {
+  var childProcess = __require("child_process");
+  var { isLinux, getReport } = require_process();
+  var { LDD_PATH, SELF_PATH, readFile, readFileSync } = require_filesystem();
+  var { interpreterPath } = require_elf();
+  var cachedFamilyInterpreter;
+  var cachedFamilyFilesystem;
+  var cachedVersionFilesystem;
+  var command = "getconf GNU_LIBC_VERSION 2>&1 || true; ldd --version 2>&1 || true";
+  var commandOut = "";
+  var safeCommand = () => {
+    if (!commandOut) {
+      return new Promise((resolve) => {
+        childProcess.exec(command, (err, out) => {
+          commandOut = err ? " " : out;
+          resolve(commandOut);
+        });
+      });
+    }
+    return commandOut;
+  };
+  var safeCommandSync = () => {
+    if (!commandOut) {
+      try {
+        commandOut = childProcess.execSync(command, { encoding: "utf8" });
+      } catch (_err) {
+        commandOut = " ";
+      }
+    }
+    return commandOut;
+  };
+  var GLIBC = "glibc";
+  var RE_GLIBC_VERSION = /LIBC[a-z0-9 \-).]*?(\d+\.\d+)/i;
+  var MUSL = "musl";
+  var isFileMusl = (f) => f.includes("libc.musl-") || f.includes("ld-musl-");
+  var familyFromReport = () => {
+    const report = getReport();
+    if (report.header && report.header.glibcVersionRuntime) {
+      return GLIBC;
+    }
+    if (Array.isArray(report.sharedObjects)) {
+      if (report.sharedObjects.some(isFileMusl)) {
+        return MUSL;
+      }
+    }
+    return null;
+  };
+  var familyFromCommand = (out) => {
+    const [getconf, ldd1] = out.split(/[\r\n]+/);
+    if (getconf && getconf.includes(GLIBC)) {
+      return GLIBC;
+    }
+    if (ldd1 && ldd1.includes(MUSL)) {
+      return MUSL;
+    }
+    return null;
+  };
+  var familyFromInterpreterPath = (path) => {
+    if (path) {
+      if (path.includes("/ld-musl-")) {
+        return MUSL;
+      } else if (path.includes("/ld-linux-")) {
+        return GLIBC;
+      }
+    }
+    return null;
+  };
+  var getFamilyFromLddContent = (content) => {
+    content = content.toString();
+    if (content.includes("musl")) {
+      return MUSL;
+    }
+    if (content.includes("GNU C Library")) {
+      return GLIBC;
+    }
+    return null;
+  };
+  var familyFromFilesystem = async () => {
+    if (cachedFamilyFilesystem !== undefined) {
+      return cachedFamilyFilesystem;
+    }
+    cachedFamilyFilesystem = null;
+    try {
+      const lddContent = await readFile(LDD_PATH);
+      cachedFamilyFilesystem = getFamilyFromLddContent(lddContent);
+    } catch (e) {}
+    return cachedFamilyFilesystem;
+  };
+  var familyFromFilesystemSync = () => {
+    if (cachedFamilyFilesystem !== undefined) {
+      return cachedFamilyFilesystem;
+    }
+    cachedFamilyFilesystem = null;
+    try {
+      const lddContent = readFileSync(LDD_PATH);
+      cachedFamilyFilesystem = getFamilyFromLddContent(lddContent);
+    } catch (e) {}
+    return cachedFamilyFilesystem;
+  };
+  var familyFromInterpreter = async () => {
+    if (cachedFamilyInterpreter !== undefined) {
+      return cachedFamilyInterpreter;
+    }
+    cachedFamilyInterpreter = null;
+    try {
+      const selfContent = await readFile(SELF_PATH);
+      const path = interpreterPath(selfContent);
+      cachedFamilyInterpreter = familyFromInterpreterPath(path);
+    } catch (e) {}
+    return cachedFamilyInterpreter;
+  };
+  var familyFromInterpreterSync = () => {
+    if (cachedFamilyInterpreter !== undefined) {
+      return cachedFamilyInterpreter;
+    }
+    cachedFamilyInterpreter = null;
+    try {
+      const selfContent = readFileSync(SELF_PATH);
+      const path = interpreterPath(selfContent);
+      cachedFamilyInterpreter = familyFromInterpreterPath(path);
+    } catch (e) {}
+    return cachedFamilyInterpreter;
+  };
+  var family = async () => {
+    let family2 = null;
+    if (isLinux()) {
+      family2 = await familyFromInterpreter();
+      if (!family2) {
+        family2 = await familyFromFilesystem();
+        if (!family2) {
+          family2 = familyFromReport();
+        }
+        if (!family2) {
+          const out = await safeCommand();
+          family2 = familyFromCommand(out);
+        }
+      }
+    }
+    return family2;
+  };
+  var familySync = () => {
+    let family2 = null;
+    if (isLinux()) {
+      family2 = familyFromInterpreterSync();
+      if (!family2) {
+        family2 = familyFromFilesystemSync();
+        if (!family2) {
+          family2 = familyFromReport();
+        }
+        if (!family2) {
+          const out = safeCommandSync();
+          family2 = familyFromCommand(out);
+        }
+      }
+    }
+    return family2;
+  };
+  var isNonGlibcLinux = async () => isLinux() && await family() !== GLIBC;
+  var isNonGlibcLinuxSync = () => isLinux() && familySync() !== GLIBC;
+  var versionFromFilesystem = async () => {
+    if (cachedVersionFilesystem !== undefined) {
+      return cachedVersionFilesystem;
+    }
+    cachedVersionFilesystem = null;
+    try {
+      const lddContent = await readFile(LDD_PATH);
+      const versionMatch = lddContent.match(RE_GLIBC_VERSION);
+      if (versionMatch) {
+        cachedVersionFilesystem = versionMatch[1];
+      }
+    } catch (e) {}
+    return cachedVersionFilesystem;
+  };
+  var versionFromFilesystemSync = () => {
+    if (cachedVersionFilesystem !== undefined) {
+      return cachedVersionFilesystem;
+    }
+    cachedVersionFilesystem = null;
+    try {
+      const lddContent = readFileSync(LDD_PATH);
+      const versionMatch = lddContent.match(RE_GLIBC_VERSION);
+      if (versionMatch) {
+        cachedVersionFilesystem = versionMatch[1];
+      }
+    } catch (e) {}
+    return cachedVersionFilesystem;
+  };
+  var versionFromReport = () => {
+    const report = getReport();
+    if (report.header && report.header.glibcVersionRuntime) {
+      return report.header.glibcVersionRuntime;
+    }
+    return null;
+  };
+  var versionSuffix = (s) => s.trim().split(/\s+/)[1];
+  var versionFromCommand = (out) => {
+    const [getconf, ldd1, ldd2] = out.split(/[\r\n]+/);
+    if (getconf && getconf.includes(GLIBC)) {
+      return versionSuffix(getconf);
+    }
+    if (ldd1 && ldd2 && ldd1.includes(MUSL)) {
+      return versionSuffix(ldd2);
+    }
+    return null;
+  };
+  var version = async () => {
+    let version2 = null;
+    if (isLinux()) {
+      version2 = await versionFromFilesystem();
+      if (!version2) {
+        version2 = versionFromReport();
+      }
+      if (!version2) {
+        const out = await safeCommand();
+        version2 = versionFromCommand(out);
+      }
+    }
+    return version2;
+  };
+  var versionSync = () => {
+    let version2 = null;
+    if (isLinux()) {
+      version2 = versionFromFilesystemSync();
+      if (!version2) {
+        version2 = versionFromReport();
+      }
+      if (!version2) {
+        const out = safeCommandSync();
+        version2 = versionFromCommand(out);
+      }
+    }
+    return version2;
+  };
+  module.exports = {
+    GLIBC,
+    MUSL,
+    family,
+    familySync,
+    isNonGlibcLinux,
+    isNonGlibcLinuxSync,
+    version,
+    versionSync
+  };
+});
+
+// node_modules/node-gyp-build-optional-packages/node-gyp-build.js
+var require_node_gyp_build = __commonJS((exports, module) => {
+  var fs = __require("fs");
+  var path = __require("path");
+  var url = __require("url");
+  var os3 = __require("os");
+  var runtimeRequire = typeof __webpack_require__ === "function" ? __non_webpack_require__ : __require;
+  var vars = process.config && process.config.variables || {};
+  var prebuildsOnly = !!process.env.PREBUILDS_ONLY;
+  var versions = process.versions;
+  var abi = versions.modules;
+  if (versions.deno || process.isBun) {
+    abi = "unsupported";
+  }
+  var runtime = isElectron() ? "electron" : isNwjs() ? "node-webkit" : "node";
+  var arch = process.env.npm_config_arch || os3.arch();
+  var platform = process.env.npm_config_platform || os3.platform();
+  var libc = process.env.LIBC || (isMusl(platform) ? "musl" : "glibc");
+  var armv = process.env.ARM_VERSION || (arch === "arm64" ? "8" : vars.arm_version) || "";
+  var uv = (versions.uv || "").split(".")[0];
+  module.exports = load;
+  function load(dir) {
+    return runtimeRequire(load.resolve(dir));
+  }
+  load.resolve = load.path = function(dir) {
+    dir = path.resolve(dir || ".");
+    var packageName = "";
+    var packageNameError;
+    try {
+      packageName = runtimeRequire(path.join(dir, "package.json")).name;
+      var varName = packageName.toUpperCase().replace(/-/g, "_");
+      if (process.env[varName + "_PREBUILD"])
+        dir = process.env[varName + "_PREBUILD"];
+    } catch (err) {
+      packageNameError = err;
+    }
+    if (!prebuildsOnly) {
+      var release = getFirst(path.join(dir, "build/Release"), matchBuild);
+      if (release)
+        return release;
+      var debug = getFirst(path.join(dir, "build/Debug"), matchBuild);
+      if (debug)
+        return debug;
+    }
+    var prebuild = resolve(dir);
+    if (prebuild)
+      return prebuild;
+    var nearby = resolve(path.dirname(process.execPath));
+    if (nearby)
+      return nearby;
+    var platformPackage = (packageName[0] == "@" ? "" : "@" + packageName + "/") + packageName + "-" + platform + "-" + arch;
+    var packageResolutionError;
+    try {
+      var prebuildPackage = path.dirname(__require("module").createRequire(url.pathToFileURL(path.join(dir, "package.json"))).resolve(platformPackage));
+      return resolveFile(prebuildPackage);
+    } catch (error) {
+      packageResolutionError = error;
+    }
+    var target2 = [
+      "platform=" + platform,
+      "arch=" + arch,
+      "runtime=" + runtime,
+      "abi=" + abi,
+      "uv=" + uv,
+      armv ? "armv=" + armv : "",
+      "libc=" + libc,
+      "node=" + process.versions.node,
+      process.versions.electron ? "electron=" + process.versions.electron : "",
+      typeof __webpack_require__ === "function" ? "webpack=true" : ""
+    ].filter(Boolean).join(" ");
+    let errMessage = "No native build was found for " + target2 + `
+    attempted loading from: ` + dir + " and package:" + " " + platformPackage + `
+`;
+    if (packageNameError) {
+      errMessage += "Error finding package.json: " + packageNameError.message + `
+`;
+    }
+    if (packageResolutionError) {
+      errMessage += "Error resolving package: " + packageResolutionError.message + `
+`;
+    }
+    throw new Error(errMessage);
+    function resolve(dir2) {
+      var tuples = readdirSync(path.join(dir2, "prebuilds")).map(parseTuple);
+      var tuple = tuples.filter(matchTuple(platform, arch)).sort(compareTuples)[0];
+      if (!tuple)
+        return;
+      return resolveFile(path.join(dir2, "prebuilds", tuple.name));
+    }
+    function resolveFile(prebuilds) {
+      var parsed = readdirSync(prebuilds).map(parseTags);
+      var candidates = parsed.filter(matchTags(runtime, abi));
+      var winner = candidates.sort(compareTags(runtime))[0];
+      if (winner)
+        return path.join(prebuilds, winner.file);
+    }
+  };
+  function readdirSync(dir) {
+    try {
+      return fs.readdirSync(dir);
+    } catch (err) {
+      return [];
+    }
+  }
+  function getFirst(dir, filter) {
+    var files = readdirSync(dir).filter(filter);
+    return files[0] && path.join(dir, files[0]);
+  }
+  function matchBuild(name) {
+    return /\.node$/.test(name);
+  }
+  function parseTuple(name) {
+    var arr = name.split("-");
+    if (arr.length !== 2)
+      return;
+    var platform2 = arr[0];
+    var architectures = arr[1].split("+");
+    if (!platform2)
+      return;
+    if (!architectures.length)
+      return;
+    if (!architectures.every(Boolean))
+      return;
+    return { name, platform: platform2, architectures };
+  }
+  function matchTuple(platform2, arch2) {
+    return function(tuple) {
+      if (tuple == null)
+        return false;
+      if (tuple.platform !== platform2)
+        return false;
+      return tuple.architectures.includes(arch2);
+    };
+  }
+  function compareTuples(a, b) {
+    return a.architectures.length - b.architectures.length;
+  }
+  function parseTags(file) {
+    var arr = file.split(".");
+    var extension = arr.pop();
+    var tags = { file, specificity: 0 };
+    if (extension !== "node")
+      return;
+    for (var i = 0;i < arr.length; i++) {
+      var tag = arr[i];
+      if (tag === "node" || tag === "electron" || tag === "node-webkit") {
+        tags.runtime = tag;
+      } else if (tag === "napi") {
+        tags.napi = true;
+      } else if (tag.slice(0, 3) === "abi") {
+        tags.abi = tag.slice(3);
+      } else if (tag.slice(0, 2) === "uv") {
+        tags.uv = tag.slice(2);
+      } else if (tag.slice(0, 4) === "armv") {
+        tags.armv = tag.slice(4);
+      } else if (tag === "glibc" || tag === "musl") {
+        tags.libc = tag;
+      } else {
+        continue;
+      }
+      tags.specificity++;
+    }
+    return tags;
+  }
+  function matchTags(runtime2, abi2) {
+    return function(tags) {
+      if (tags == null)
+        return false;
+      if (tags.runtime !== runtime2 && !runtimeAgnostic(tags))
+        return false;
+      if (tags.abi !== abi2 && !tags.napi)
+        return false;
+      if (tags.uv && tags.uv !== uv)
+        return false;
+      if (tags.armv && tags.armv !== armv)
+        return false;
+      if (tags.libc && tags.libc !== libc)
+        return false;
+      return true;
+    };
+  }
+  function runtimeAgnostic(tags) {
+    return tags.runtime === "node" && tags.napi;
+  }
+  function compareTags(runtime2) {
+    return function(a, b) {
+      if (a.runtime !== b.runtime) {
+        return a.runtime === runtime2 ? -1 : 1;
+      } else if (a.abi !== b.abi) {
+        return a.abi ? -1 : 1;
+      } else if (a.specificity !== b.specificity) {
+        return a.specificity > b.specificity ? -1 : 1;
+      } else {
+        return 0;
+      }
+    };
+  }
+  function isNwjs() {
+    return !!(process.versions && process.versions.nw);
+  }
+  function isElectron() {
+    if (process.versions && process.versions.electron)
+      return true;
+    if (process.env.ELECTRON_RUN_AS_NODE)
+      return true;
+    return typeof window !== "undefined" && window.process && window.process.type === "renderer";
+  }
+  function isMusl(platform2) {
+    if (platform2 !== "linux")
+      return false;
+    const { familySync, MUSL } = require_detect_libc();
+    return familySync() === MUSL;
+  }
+  load.parseTags = parseTags;
+  load.matchTags = matchTags;
+  load.compareTags = compareTags;
+  load.parseTuple = parseTuple;
+  load.matchTuple = matchTuple;
+  load.compareTuples = compareTuples;
+});
+
+// node_modules/node-gyp-build-optional-packages/index.js
+var require_node_gyp_build_optional_packages = __commonJS((exports, module) => {
+  var runtimeRequire = typeof __webpack_require__ === "function" ? __non_webpack_require__ : __require;
+  if (typeof runtimeRequire.addon === "function") {
+    module.exports = runtimeRequire.addon.bind(runtimeRequire);
+  } else {
+    module.exports = require_node_gyp_build();
+  }
+});
+
+// node_modules/msgpackr-extract/index.js
+var require_msgpackr_extract = __commonJS((exports, module) => {
+  var __dirname = "/home/kncos/Documents/cracked-judge/node_modules/msgpackr-extract";
+  module.exports = require_node_gyp_build_optional_packages()(__dirname);
+});
+
 // node_modules/generic-pool/lib/factoryValidator.js
 var require_factoryValidator = __commonJS((exports, module) => {
   module.exports = function(factory) {
@@ -14356,7 +14927,7 @@ var require_errors2 = __commonJS((exports, module) => {
 // node_modules/generic-pool/lib/ResourceRequest.js
 var require_ResourceRequest = __commonJS((exports, module) => {
   var Deferred = require_Deferred();
-  var errors3 = require_errors2();
+  var errors4 = require_errors2();
   function fbind(fn, ctx) {
     return function bound() {
       return fn.apply(ctx, arguments);
@@ -14393,7 +14964,7 @@ var require_ResourceRequest = __commonJS((exports, module) => {
       this._timeout = null;
     }
     _fireTimeout() {
-      this.reject(new errors3.TimeoutError("ResourceRequest timed out"));
+      this.reject(new errors4.TimeoutError("ResourceRequest timed out"));
     }
     reject(reason) {
       this.removeTimeout();
@@ -18595,6 +19166,2924 @@ var timingMiddleware = o.middleware(async ({ next, context, path }) => {
 var vmRoute = o.$context().use(timingMiddleware);
 var publicRoute = o.$context().use(timingMiddleware);
 
+// node_modules/msgpackr/unpack.js
+var decoder;
+try {
+  decoder = new TextDecoder;
+} catch (error) {}
+var src;
+var srcEnd;
+var position = 0;
+var EMPTY_ARRAY = [];
+var strings = EMPTY_ARRAY;
+var stringPosition = 0;
+var currentUnpackr = {};
+var currentStructures;
+var srcString;
+var srcStringStart = 0;
+var srcStringEnd = 0;
+var bundledStrings;
+var referenceMap;
+var currentExtensions = [];
+var dataView;
+var defaultOptions = {
+  useRecords: false,
+  mapsAsObjects: true
+};
+
+class C1Type {
+}
+var C1 = new C1Type;
+C1.name = "MessagePack 0xC1";
+var sequentialMode = false;
+var inlineObjectReadThreshold = 2;
+var readStruct;
+var onLoadedStructures;
+var onSaveState;
+try {
+  new Function("");
+} catch (error) {
+  inlineObjectReadThreshold = Infinity;
+}
+
+class Unpackr {
+  constructor(options) {
+    if (options) {
+      if (options.useRecords === false && options.mapsAsObjects === undefined)
+        options.mapsAsObjects = true;
+      if (options.sequential && options.trusted !== false) {
+        options.trusted = true;
+        if (!options.structures && options.useRecords != false) {
+          options.structures = [];
+          if (!options.maxSharedStructures)
+            options.maxSharedStructures = 0;
+        }
+      }
+      if (options.structures)
+        options.structures.sharedLength = options.structures.length;
+      else if (options.getStructures) {
+        (options.structures = []).uninitialized = true;
+        options.structures.sharedLength = 0;
+      }
+      if (options.int64AsNumber) {
+        options.int64AsType = "number";
+      }
+    }
+    Object.assign(this, options);
+  }
+  unpack(source, options) {
+    if (src) {
+      return saveState(() => {
+        clearSource();
+        return this ? this.unpack(source, options) : Unpackr.prototype.unpack.call(defaultOptions, source, options);
+      });
+    }
+    if (!source.buffer && source.constructor === ArrayBuffer)
+      source = typeof Buffer !== "undefined" ? Buffer.from(source) : new Uint8Array(source);
+    if (typeof options === "object") {
+      srcEnd = options.end || source.length;
+      position = options.start || 0;
+    } else {
+      position = 0;
+      srcEnd = options > -1 ? options : source.length;
+    }
+    stringPosition = 0;
+    srcStringEnd = 0;
+    srcString = null;
+    strings = EMPTY_ARRAY;
+    bundledStrings = null;
+    src = source;
+    try {
+      dataView = source.dataView || (source.dataView = new DataView(source.buffer, source.byteOffset, source.byteLength));
+    } catch (error) {
+      src = null;
+      if (source instanceof Uint8Array)
+        throw error;
+      throw new Error("Source must be a Uint8Array or Buffer but was a " + (source && typeof source == "object" ? source.constructor.name : typeof source));
+    }
+    if (this instanceof Unpackr) {
+      currentUnpackr = this;
+      if (this.structures) {
+        currentStructures = this.structures;
+        return checkedRead(options);
+      } else if (!currentStructures || currentStructures.length > 0) {
+        currentStructures = [];
+      }
+    } else {
+      currentUnpackr = defaultOptions;
+      if (!currentStructures || currentStructures.length > 0)
+        currentStructures = [];
+    }
+    return checkedRead(options);
+  }
+  unpackMultiple(source, forEach) {
+    let values, lastPosition = 0;
+    try {
+      sequentialMode = true;
+      let size = source.length;
+      let value2 = this ? this.unpack(source, size) : defaultUnpackr.unpack(source, size);
+      if (forEach) {
+        if (forEach(value2, lastPosition, position) === false)
+          return;
+        while (position < size) {
+          lastPosition = position;
+          if (forEach(checkedRead(), lastPosition, position) === false) {
+            return;
+          }
+        }
+      } else {
+        values = [value2];
+        while (position < size) {
+          lastPosition = position;
+          values.push(checkedRead());
+        }
+        return values;
+      }
+    } catch (error) {
+      error.lastPosition = lastPosition;
+      error.values = values;
+      throw error;
+    } finally {
+      sequentialMode = false;
+      clearSource();
+    }
+  }
+  _mergeStructures(loadedStructures, existingStructures) {
+    if (onLoadedStructures)
+      loadedStructures = onLoadedStructures.call(this, loadedStructures);
+    loadedStructures = loadedStructures || [];
+    if (Object.isFrozen(loadedStructures))
+      loadedStructures = loadedStructures.map((structure) => structure.slice(0));
+    for (let i = 0, l = loadedStructures.length;i < l; i++) {
+      let structure = loadedStructures[i];
+      if (structure) {
+        structure.isShared = true;
+        if (i >= 32)
+          structure.highByte = i - 32 >> 5;
+      }
+    }
+    loadedStructures.sharedLength = loadedStructures.length;
+    for (let id in existingStructures || []) {
+      if (id >= 0) {
+        let structure = loadedStructures[id];
+        let existing = existingStructures[id];
+        if (existing) {
+          if (structure)
+            (loadedStructures.restoreStructures || (loadedStructures.restoreStructures = []))[id] = structure;
+          loadedStructures[id] = existing;
+        }
+      }
+    }
+    return this.structures = loadedStructures;
+  }
+  decode(source, options) {
+    return this.unpack(source, options);
+  }
+}
+function checkedRead(options) {
+  try {
+    if (!currentUnpackr.trusted && !sequentialMode) {
+      let sharedLength = currentStructures.sharedLength || 0;
+      if (sharedLength < currentStructures.length)
+        currentStructures.length = sharedLength;
+    }
+    let result;
+    if (currentUnpackr.randomAccessStructure && src[position] < 64 && src[position] >= 32 && readStruct) {
+      result = readStruct(src, position, srcEnd, currentUnpackr);
+      src = null;
+      if (!(options && options.lazy) && result)
+        result = result.toJSON();
+      position = srcEnd;
+    } else
+      result = read();
+    if (bundledStrings) {
+      position = bundledStrings.postBundlePosition;
+      bundledStrings = null;
+    }
+    if (sequentialMode)
+      currentStructures.restoreStructures = null;
+    if (position == srcEnd) {
+      if (currentStructures && currentStructures.restoreStructures)
+        restoreStructures();
+      currentStructures = null;
+      src = null;
+      if (referenceMap)
+        referenceMap = null;
+    } else if (position > srcEnd) {
+      throw new Error("Unexpected end of MessagePack data");
+    } else if (!sequentialMode) {
+      let jsonView;
+      try {
+        jsonView = JSON.stringify(result, (_, value2) => typeof value2 === "bigint" ? `${value2}n` : value2).slice(0, 100);
+      } catch (error) {
+        jsonView = "(JSON view not available " + error + ")";
+      }
+      throw new Error("Data read, but end of buffer not reached " + jsonView);
+    }
+    return result;
+  } catch (error) {
+    if (currentStructures && currentStructures.restoreStructures)
+      restoreStructures();
+    clearSource();
+    if (error instanceof RangeError || error.message.startsWith("Unexpected end of buffer") || position > srcEnd) {
+      error.incomplete = true;
+    }
+    throw error;
+  }
+}
+function restoreStructures() {
+  for (let id in currentStructures.restoreStructures) {
+    currentStructures[id] = currentStructures.restoreStructures[id];
+  }
+  currentStructures.restoreStructures = null;
+}
+function read() {
+  let token = src[position++];
+  if (token < 160) {
+    if (token < 128) {
+      if (token < 64)
+        return token;
+      else {
+        let structure = currentStructures[token & 63] || currentUnpackr.getStructures && loadStructures()[token & 63];
+        if (structure) {
+          if (!structure.read) {
+            structure.read = createStructureReader(structure, token & 63);
+          }
+          return structure.read();
+        } else
+          return token;
+      }
+    } else if (token < 144) {
+      token -= 128;
+      if (currentUnpackr.mapsAsObjects) {
+        let object = {};
+        for (let i = 0;i < token; i++) {
+          let key = readKey();
+          if (key === "__proto__")
+            key = "__proto_";
+          object[key] = read();
+        }
+        return object;
+      } else {
+        let map = new Map;
+        for (let i = 0;i < token; i++) {
+          map.set(read(), read());
+        }
+        return map;
+      }
+    } else {
+      token -= 144;
+      let array = new Array(token);
+      for (let i = 0;i < token; i++) {
+        array[i] = read();
+      }
+      if (currentUnpackr.freezeData)
+        return Object.freeze(array);
+      return array;
+    }
+  } else if (token < 192) {
+    let length = token - 160;
+    if (srcStringEnd >= position) {
+      return srcString.slice(position - srcStringStart, (position += length) - srcStringStart);
+    }
+    if (srcStringEnd == 0 && srcEnd < 140) {
+      let string = length < 16 ? shortStringInJS(length) : longStringInJS(length);
+      if (string != null)
+        return string;
+    }
+    return readFixedString(length);
+  } else {
+    let value2;
+    switch (token) {
+      case 192:
+        return null;
+      case 193:
+        if (bundledStrings) {
+          value2 = read();
+          if (value2 > 0)
+            return bundledStrings[1].slice(bundledStrings.position1, bundledStrings.position1 += value2);
+          else
+            return bundledStrings[0].slice(bundledStrings.position0, bundledStrings.position0 -= value2);
+        }
+        return C1;
+      case 194:
+        return false;
+      case 195:
+        return true;
+      case 196:
+        value2 = src[position++];
+        if (value2 === undefined)
+          throw new Error("Unexpected end of buffer");
+        return readBin(value2);
+      case 197:
+        value2 = dataView.getUint16(position);
+        position += 2;
+        return readBin(value2);
+      case 198:
+        value2 = dataView.getUint32(position);
+        position += 4;
+        return readBin(value2);
+      case 199:
+        return readExt(src[position++]);
+      case 200:
+        value2 = dataView.getUint16(position);
+        position += 2;
+        return readExt(value2);
+      case 201:
+        value2 = dataView.getUint32(position);
+        position += 4;
+        return readExt(value2);
+      case 202:
+        value2 = dataView.getFloat32(position);
+        if (currentUnpackr.useFloat32 > 2) {
+          let multiplier = mult10[(src[position] & 127) << 1 | src[position + 1] >> 7];
+          position += 4;
+          return (multiplier * value2 + (value2 > 0 ? 0.5 : -0.5) >> 0) / multiplier;
+        }
+        position += 4;
+        return value2;
+      case 203:
+        value2 = dataView.getFloat64(position);
+        position += 8;
+        return value2;
+      case 204:
+        return src[position++];
+      case 205:
+        value2 = dataView.getUint16(position);
+        position += 2;
+        return value2;
+      case 206:
+        value2 = dataView.getUint32(position);
+        position += 4;
+        return value2;
+      case 207:
+        if (currentUnpackr.int64AsType === "number") {
+          value2 = dataView.getUint32(position) * 4294967296;
+          value2 += dataView.getUint32(position + 4);
+        } else if (currentUnpackr.int64AsType === "string") {
+          value2 = dataView.getBigUint64(position).toString();
+        } else if (currentUnpackr.int64AsType === "auto") {
+          value2 = dataView.getBigUint64(position);
+          if (value2 <= BigInt(2) << BigInt(52))
+            value2 = Number(value2);
+        } else
+          value2 = dataView.getBigUint64(position);
+        position += 8;
+        return value2;
+      case 208:
+        return dataView.getInt8(position++);
+      case 209:
+        value2 = dataView.getInt16(position);
+        position += 2;
+        return value2;
+      case 210:
+        value2 = dataView.getInt32(position);
+        position += 4;
+        return value2;
+      case 211:
+        if (currentUnpackr.int64AsType === "number") {
+          value2 = dataView.getInt32(position) * 4294967296;
+          value2 += dataView.getUint32(position + 4);
+        } else if (currentUnpackr.int64AsType === "string") {
+          value2 = dataView.getBigInt64(position).toString();
+        } else if (currentUnpackr.int64AsType === "auto") {
+          value2 = dataView.getBigInt64(position);
+          if (value2 >= BigInt(-2) << BigInt(52) && value2 <= BigInt(2) << BigInt(52))
+            value2 = Number(value2);
+        } else
+          value2 = dataView.getBigInt64(position);
+        position += 8;
+        return value2;
+      case 212:
+        value2 = src[position++];
+        if (value2 == 114) {
+          return recordDefinition(src[position++] & 63);
+        } else {
+          let extension = currentExtensions[value2];
+          if (extension) {
+            if (extension.read) {
+              position++;
+              return extension.read(read());
+            } else if (extension.noBuffer) {
+              position++;
+              return extension();
+            } else
+              return extension(src.subarray(position, ++position));
+          } else
+            throw new Error("Unknown extension " + value2);
+        }
+      case 213:
+        value2 = src[position];
+        if (value2 == 114) {
+          position++;
+          return recordDefinition(src[position++] & 63, src[position++]);
+        } else
+          return readExt(2);
+      case 214:
+        return readExt(4);
+      case 215:
+        return readExt(8);
+      case 216:
+        return readExt(16);
+      case 217:
+        value2 = src[position++];
+        if (srcStringEnd >= position) {
+          return srcString.slice(position - srcStringStart, (position += value2) - srcStringStart);
+        }
+        return readString8(value2);
+      case 218:
+        value2 = dataView.getUint16(position);
+        position += 2;
+        if (srcStringEnd >= position) {
+          return srcString.slice(position - srcStringStart, (position += value2) - srcStringStart);
+        }
+        return readString16(value2);
+      case 219:
+        value2 = dataView.getUint32(position);
+        position += 4;
+        if (srcStringEnd >= position) {
+          return srcString.slice(position - srcStringStart, (position += value2) - srcStringStart);
+        }
+        return readString32(value2);
+      case 220:
+        value2 = dataView.getUint16(position);
+        position += 2;
+        return readArray(value2);
+      case 221:
+        value2 = dataView.getUint32(position);
+        position += 4;
+        return readArray(value2);
+      case 222:
+        value2 = dataView.getUint16(position);
+        position += 2;
+        return readMap(value2);
+      case 223:
+        value2 = dataView.getUint32(position);
+        position += 4;
+        return readMap(value2);
+      default:
+        if (token >= 224)
+          return token - 256;
+        if (token === undefined) {
+          let error = new Error("Unexpected end of MessagePack data");
+          error.incomplete = true;
+          throw error;
+        }
+        throw new Error("Unknown MessagePack token " + token);
+    }
+  }
+}
+var validName = /^[a-zA-Z_$][a-zA-Z\d_$]*$/;
+function createStructureReader(structure, firstId) {
+  function readObject() {
+    if (readObject.count++ > inlineObjectReadThreshold) {
+      let readObject2 = structure.read = new Function("r", "return function(){return " + (currentUnpackr.freezeData ? "Object.freeze" : "") + "({" + structure.map((key) => key === "__proto__" ? "__proto_:r()" : validName.test(key) ? key + ":r()" : "[" + JSON.stringify(key) + "]:r()").join(",") + "})}")(read);
+      if (structure.highByte === 0)
+        structure.read = createSecondByteReader(firstId, structure.read);
+      return readObject2();
+    }
+    let object = {};
+    for (let i = 0, l = structure.length;i < l; i++) {
+      let key = structure[i];
+      if (key === "__proto__")
+        key = "__proto_";
+      object[key] = read();
+    }
+    if (currentUnpackr.freezeData)
+      return Object.freeze(object);
+    return object;
+  }
+  readObject.count = 0;
+  if (structure.highByte === 0) {
+    return createSecondByteReader(firstId, readObject);
+  }
+  return readObject;
+}
+var createSecondByteReader = (firstId, read0) => {
+  return function() {
+    let highByte = src[position++];
+    if (highByte === 0)
+      return read0();
+    let id = firstId < 32 ? -(firstId + (highByte << 5)) : firstId + (highByte << 5);
+    let structure = currentStructures[id] || loadStructures()[id];
+    if (!structure) {
+      throw new Error("Record id is not defined for " + id);
+    }
+    if (!structure.read)
+      structure.read = createStructureReader(structure, firstId);
+    return structure.read();
+  };
+};
+function loadStructures() {
+  let loadedStructures = saveState(() => {
+    src = null;
+    return currentUnpackr.getStructures();
+  });
+  return currentStructures = currentUnpackr._mergeStructures(loadedStructures, currentStructures);
+}
+var readFixedString = readStringJS;
+var readString8 = readStringJS;
+var readString16 = readStringJS;
+var readString32 = readStringJS;
+var isNativeAccelerationEnabled = false;
+function setExtractor(extractStrings) {
+  isNativeAccelerationEnabled = true;
+  readFixedString = readString(1);
+  readString8 = readString(2);
+  readString16 = readString(3);
+  readString32 = readString(5);
+  function readString(headerLength) {
+    return function readString2(length) {
+      let string = strings[stringPosition++];
+      if (string == null) {
+        if (bundledStrings)
+          return readStringJS(length);
+        let byteOffset = src.byteOffset;
+        let extraction = extractStrings(position - headerLength + byteOffset, srcEnd + byteOffset, src.buffer);
+        if (typeof extraction == "string") {
+          string = extraction;
+          strings = EMPTY_ARRAY;
+        } else {
+          strings = extraction;
+          stringPosition = 1;
+          srcStringEnd = 1;
+          string = strings[0];
+          if (string === undefined)
+            throw new Error("Unexpected end of buffer");
+        }
+      }
+      let srcStringLength = string.length;
+      if (srcStringLength <= length) {
+        position += length;
+        return string;
+      }
+      srcString = string;
+      srcStringStart = position;
+      srcStringEnd = position + srcStringLength;
+      position += length;
+      return string.slice(0, length);
+    };
+  }
+}
+function readStringJS(length) {
+  let result;
+  if (length < 16) {
+    if (result = shortStringInJS(length))
+      return result;
+  }
+  if (length > 64 && decoder)
+    return decoder.decode(src.subarray(position, position += length));
+  const end = position + length;
+  const units = [];
+  result = "";
+  while (position < end) {
+    const byte1 = src[position++];
+    if ((byte1 & 128) === 0) {
+      units.push(byte1);
+    } else if ((byte1 & 224) === 192) {
+      const byte2 = src[position++] & 63;
+      const codePoint = (byte1 & 31) << 6 | byte2;
+      if (codePoint < 128) {
+        units.push(65533);
+      } else {
+        units.push(codePoint);
+      }
+    } else if ((byte1 & 240) === 224) {
+      const byte2 = src[position++] & 63;
+      const byte3 = src[position++] & 63;
+      const codePoint = (byte1 & 31) << 12 | byte2 << 6 | byte3;
+      if (codePoint < 2048 || codePoint >= 55296 && codePoint <= 57343) {
+        units.push(65533);
+      } else {
+        units.push(codePoint);
+      }
+    } else if ((byte1 & 248) === 240) {
+      const byte2 = src[position++] & 63;
+      const byte3 = src[position++] & 63;
+      const byte4 = src[position++] & 63;
+      let unit = (byte1 & 7) << 18 | byte2 << 12 | byte3 << 6 | byte4;
+      if (unit < 65536 || unit > 1114111) {
+        units.push(65533);
+      } else if (unit > 65535) {
+        unit -= 65536;
+        units.push(unit >>> 10 & 1023 | 55296);
+        unit = 56320 | unit & 1023;
+        units.push(unit);
+      } else {
+        units.push(unit);
+      }
+    } else {
+      units.push(65533);
+    }
+    if (units.length >= 4096) {
+      result += fromCharCode.apply(String, units);
+      units.length = 0;
+    }
+  }
+  if (units.length > 0) {
+    result += fromCharCode.apply(String, units);
+  }
+  return result;
+}
+function readString(source, start, length) {
+  let existingSrc = src;
+  src = source;
+  position = start;
+  try {
+    return readStringJS(length);
+  } finally {
+    src = existingSrc;
+  }
+}
+function readArray(length) {
+  let array = new Array(length);
+  for (let i = 0;i < length; i++) {
+    array[i] = read();
+  }
+  if (currentUnpackr.freezeData)
+    return Object.freeze(array);
+  return array;
+}
+function readMap(length) {
+  if (currentUnpackr.mapsAsObjects) {
+    let object = {};
+    for (let i = 0;i < length; i++) {
+      let key = readKey();
+      if (key === "__proto__")
+        key = "__proto_";
+      object[key] = read();
+    }
+    return object;
+  } else {
+    let map = new Map;
+    for (let i = 0;i < length; i++) {
+      map.set(read(), read());
+    }
+    return map;
+  }
+}
+var fromCharCode = String.fromCharCode;
+function longStringInJS(length) {
+  let start = position;
+  let bytes = new Array(length);
+  for (let i = 0;i < length; i++) {
+    const byte = src[position++];
+    if ((byte & 128) > 0) {
+      position = start;
+      return;
+    }
+    bytes[i] = byte;
+  }
+  return fromCharCode.apply(String, bytes);
+}
+function shortStringInJS(length) {
+  if (length < 4) {
+    if (length < 2) {
+      if (length === 0)
+        return "";
+      else {
+        let a = src[position++];
+        if ((a & 128) > 1) {
+          position -= 1;
+          return;
+        }
+        return fromCharCode(a);
+      }
+    } else {
+      let a = src[position++];
+      let b = src[position++];
+      if ((a & 128) > 0 || (b & 128) > 0) {
+        position -= 2;
+        return;
+      }
+      if (length < 3)
+        return fromCharCode(a, b);
+      let c = src[position++];
+      if ((c & 128) > 0) {
+        position -= 3;
+        return;
+      }
+      return fromCharCode(a, b, c);
+    }
+  } else {
+    let a = src[position++];
+    let b = src[position++];
+    let c = src[position++];
+    let d = src[position++];
+    if ((a & 128) > 0 || (b & 128) > 0 || (c & 128) > 0 || (d & 128) > 0) {
+      position -= 4;
+      return;
+    }
+    if (length < 6) {
+      if (length === 4)
+        return fromCharCode(a, b, c, d);
+      else {
+        let e = src[position++];
+        if ((e & 128) > 0) {
+          position -= 5;
+          return;
+        }
+        return fromCharCode(a, b, c, d, e);
+      }
+    } else if (length < 8) {
+      let e = src[position++];
+      let f = src[position++];
+      if ((e & 128) > 0 || (f & 128) > 0) {
+        position -= 6;
+        return;
+      }
+      if (length < 7)
+        return fromCharCode(a, b, c, d, e, f);
+      let g = src[position++];
+      if ((g & 128) > 0) {
+        position -= 7;
+        return;
+      }
+      return fromCharCode(a, b, c, d, e, f, g);
+    } else {
+      let e = src[position++];
+      let f = src[position++];
+      let g = src[position++];
+      let h = src[position++];
+      if ((e & 128) > 0 || (f & 128) > 0 || (g & 128) > 0 || (h & 128) > 0) {
+        position -= 8;
+        return;
+      }
+      if (length < 10) {
+        if (length === 8)
+          return fromCharCode(a, b, c, d, e, f, g, h);
+        else {
+          let i = src[position++];
+          if ((i & 128) > 0) {
+            position -= 9;
+            return;
+          }
+          return fromCharCode(a, b, c, d, e, f, g, h, i);
+        }
+      } else if (length < 12) {
+        let i = src[position++];
+        let j = src[position++];
+        if ((i & 128) > 0 || (j & 128) > 0) {
+          position -= 10;
+          return;
+        }
+        if (length < 11)
+          return fromCharCode(a, b, c, d, e, f, g, h, i, j);
+        let k = src[position++];
+        if ((k & 128) > 0) {
+          position -= 11;
+          return;
+        }
+        return fromCharCode(a, b, c, d, e, f, g, h, i, j, k);
+      } else {
+        let i = src[position++];
+        let j = src[position++];
+        let k = src[position++];
+        let l = src[position++];
+        if ((i & 128) > 0 || (j & 128) > 0 || (k & 128) > 0 || (l & 128) > 0) {
+          position -= 12;
+          return;
+        }
+        if (length < 14) {
+          if (length === 12)
+            return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l);
+          else {
+            let m = src[position++];
+            if ((m & 128) > 0) {
+              position -= 13;
+              return;
+            }
+            return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m);
+          }
+        } else {
+          let m = src[position++];
+          let n = src[position++];
+          if ((m & 128) > 0 || (n & 128) > 0) {
+            position -= 14;
+            return;
+          }
+          if (length < 15)
+            return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m, n);
+          let o2 = src[position++];
+          if ((o2 & 128) > 0) {
+            position -= 15;
+            return;
+          }
+          return fromCharCode(a, b, c, d, e, f, g, h, i, j, k, l, m, n, o2);
+        }
+      }
+    }
+  }
+}
+function readOnlyJSString() {
+  let token = src[position++];
+  let length;
+  if (token < 192) {
+    length = token - 160;
+  } else {
+    switch (token) {
+      case 217:
+        length = src[position++];
+        break;
+      case 218:
+        length = dataView.getUint16(position);
+        position += 2;
+        break;
+      case 219:
+        length = dataView.getUint32(position);
+        position += 4;
+        break;
+      default:
+        throw new Error("Expected string");
+    }
+  }
+  return readStringJS(length);
+}
+function readBin(length) {
+  return currentUnpackr.copyBuffers ? Uint8Array.prototype.slice.call(src, position, position += length) : src.subarray(position, position += length);
+}
+function readExt(length) {
+  let type2 = src[position++];
+  if (currentExtensions[type2]) {
+    let end;
+    return currentExtensions[type2](src.subarray(position, end = position += length), (readPosition) => {
+      position = readPosition;
+      try {
+        return read();
+      } finally {
+        position = end;
+      }
+    });
+  } else
+    throw new Error("Unknown extension type " + type2);
+}
+var keyCache = new Array(4096);
+function readKey() {
+  let length = src[position++];
+  if (length >= 160 && length < 192) {
+    length = length - 160;
+    if (srcStringEnd >= position)
+      return srcString.slice(position - srcStringStart, (position += length) - srcStringStart);
+    else if (!(srcStringEnd == 0 && srcEnd < 180))
+      return readFixedString(length);
+  } else {
+    position--;
+    return asSafeString(read());
+  }
+  let key = (length << 5 ^ (length > 1 ? dataView.getUint16(position) : length > 0 ? src[position] : 0)) & 4095;
+  let entry = keyCache[key];
+  let checkPosition = position;
+  let end = position + length - 3;
+  let chunk;
+  let i = 0;
+  if (entry && entry.bytes == length) {
+    while (checkPosition < end) {
+      chunk = dataView.getUint32(checkPosition);
+      if (chunk != entry[i++]) {
+        checkPosition = 1879048192;
+        break;
+      }
+      checkPosition += 4;
+    }
+    end += 3;
+    while (checkPosition < end) {
+      chunk = src[checkPosition++];
+      if (chunk != entry[i++]) {
+        checkPosition = 1879048192;
+        break;
+      }
+    }
+    if (checkPosition === end) {
+      position = checkPosition;
+      return entry.string;
+    }
+    end -= 3;
+    checkPosition = position;
+  }
+  entry = [];
+  keyCache[key] = entry;
+  entry.bytes = length;
+  while (checkPosition < end) {
+    chunk = dataView.getUint32(checkPosition);
+    entry.push(chunk);
+    checkPosition += 4;
+  }
+  end += 3;
+  while (checkPosition < end) {
+    chunk = src[checkPosition++];
+    entry.push(chunk);
+  }
+  let string = length < 16 ? shortStringInJS(length) : longStringInJS(length);
+  if (string != null)
+    return entry.string = string;
+  return entry.string = readFixedString(length);
+}
+function asSafeString(property) {
+  if (typeof property === "string")
+    return property;
+  if (typeof property === "number" || typeof property === "boolean" || typeof property === "bigint")
+    return property.toString();
+  if (property == null)
+    return property + "";
+  if (currentUnpackr.allowArraysInMapKeys && Array.isArray(property) && property.flat().every((item) => ["string", "number", "boolean", "bigint"].includes(typeof item))) {
+    return property.flat().toString();
+  }
+  throw new Error(`Invalid property type for record: ${typeof property}`);
+}
+var recordDefinition = (id, highByte) => {
+  let structure = read().map(asSafeString);
+  let firstByte = id;
+  if (highByte !== undefined) {
+    id = id < 32 ? -((highByte << 5) + id) : (highByte << 5) + id;
+    structure.highByte = highByte;
+  }
+  let existingStructure = currentStructures[id];
+  if (existingStructure && (existingStructure.isShared || sequentialMode)) {
+    (currentStructures.restoreStructures || (currentStructures.restoreStructures = []))[id] = existingStructure;
+  }
+  currentStructures[id] = structure;
+  structure.read = createStructureReader(structure, firstByte);
+  return structure.read();
+};
+currentExtensions[0] = () => {};
+currentExtensions[0].noBuffer = true;
+currentExtensions[66] = (data) => {
+  let headLength = data.byteLength % 8 || 8;
+  let head = BigInt(data[0] & 128 ? data[0] - 256 : data[0]);
+  for (let i = 1;i < headLength; i++) {
+    head <<= BigInt(8);
+    head += BigInt(data[i]);
+  }
+  if (data.byteLength !== headLength) {
+    let view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    let decode = (start, end) => {
+      let length = end - start;
+      if (length <= 40) {
+        let out = view.getBigUint64(start);
+        for (let i = start + 8;i < end; i += 8) {
+          out <<= BigInt(64n);
+          out |= view.getBigUint64(i);
+        }
+        return out;
+      }
+      let middle = start + (length >> 4 << 3);
+      let left = decode(start, middle);
+      let right = decode(middle, end);
+      return left << BigInt((end - middle) * 8) | right;
+    };
+    head = head << BigInt((view.byteLength - headLength) * 8) | decode(headLength, view.byteLength);
+  }
+  return head;
+};
+var errors = {
+  Error,
+  EvalError,
+  RangeError,
+  ReferenceError,
+  SyntaxError,
+  TypeError,
+  URIError,
+  AggregateError: typeof AggregateError === "function" ? AggregateError : null
+};
+currentExtensions[101] = () => {
+  let data = read();
+  if (!errors[data[0]]) {
+    let error = Error(data[1], { cause: data[2] });
+    error.name = data[0];
+    return error;
+  }
+  return errors[data[0]](data[1], { cause: data[2] });
+};
+currentExtensions[105] = (data) => {
+  if (currentUnpackr.structuredClone === false)
+    throw new Error("Structured clone extension is disabled");
+  let id = dataView.getUint32(position - 4);
+  if (!referenceMap)
+    referenceMap = new Map;
+  let token = src[position];
+  let target;
+  if (token >= 144 && token < 160 || token == 220 || token == 221)
+    target = [];
+  else if (token >= 128 && token < 144 || token == 222 || token == 223)
+    target = new Map;
+  else if ((token >= 199 && token <= 201 || token >= 212 && token <= 216) && src[position + 1] === 115)
+    target = new Set;
+  else
+    target = {};
+  let refEntry = { target };
+  referenceMap.set(id, refEntry);
+  let targetProperties = read();
+  if (!refEntry.used) {
+    return refEntry.target = targetProperties;
+  } else {
+    Object.assign(target, targetProperties);
+  }
+  if (target instanceof Map)
+    for (let [k, v] of targetProperties.entries())
+      target.set(k, v);
+  if (target instanceof Set)
+    for (let i of Array.from(targetProperties))
+      target.add(i);
+  return target;
+};
+currentExtensions[112] = (data) => {
+  if (currentUnpackr.structuredClone === false)
+    throw new Error("Structured clone extension is disabled");
+  let id = dataView.getUint32(position - 4);
+  let refEntry = referenceMap.get(id);
+  refEntry.used = true;
+  return refEntry.target;
+};
+currentExtensions[115] = () => new Set(read());
+var typedArrays = ["Int8", "Uint8", "Uint8Clamped", "Int16", "Uint16", "Int32", "Uint32", "Float32", "Float64", "BigInt64", "BigUint64"].map((type2) => type2 + "Array");
+var glbl = typeof globalThis === "object" ? globalThis : window;
+currentExtensions[116] = (data) => {
+  let typeCode = data[0];
+  let buffer = Uint8Array.prototype.slice.call(data, 1).buffer;
+  let typedArrayName = typedArrays[typeCode];
+  if (!typedArrayName) {
+    if (typeCode === 16)
+      return buffer;
+    if (typeCode === 17)
+      return new DataView(buffer);
+    throw new Error("Could not find typed array for code " + typeCode);
+  }
+  return new glbl[typedArrayName](buffer);
+};
+currentExtensions[120] = () => {
+  let data = read();
+  return new RegExp(data[0], data[1]);
+};
+var TEMP_BUNDLE = [];
+currentExtensions[98] = (data) => {
+  let dataSize = (data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3];
+  let dataPosition = position;
+  position += dataSize - data.length;
+  bundledStrings = TEMP_BUNDLE;
+  bundledStrings = [readOnlyJSString(), readOnlyJSString()];
+  bundledStrings.position0 = 0;
+  bundledStrings.position1 = 0;
+  bundledStrings.postBundlePosition = position;
+  position = dataPosition;
+  return read();
+};
+currentExtensions[255] = (data) => {
+  if (data.length == 4)
+    return new Date((data[0] * 16777216 + (data[1] << 16) + (data[2] << 8) + data[3]) * 1000);
+  else if (data.length == 8)
+    return new Date(((data[0] << 22) + (data[1] << 14) + (data[2] << 6) + (data[3] >> 2)) / 1e6 + ((data[3] & 3) * 4294967296 + data[4] * 16777216 + (data[5] << 16) + (data[6] << 8) + data[7]) * 1000);
+  else if (data.length == 12)
+    return new Date(((data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3]) / 1e6 + ((data[4] & 128 ? -281474976710656 : 0) + data[6] * 1099511627776 + data[7] * 4294967296 + data[8] * 16777216 + (data[9] << 16) + (data[10] << 8) + data[11]) * 1000);
+  else
+    return new Date("invalid");
+};
+function saveState(callback) {
+  if (onSaveState)
+    onSaveState();
+  let savedSrcEnd = srcEnd;
+  let savedPosition = position;
+  let savedStringPosition = stringPosition;
+  let savedSrcStringStart = srcStringStart;
+  let savedSrcStringEnd = srcStringEnd;
+  let savedSrcString = srcString;
+  let savedStrings = strings;
+  let savedReferenceMap = referenceMap;
+  let savedBundledStrings = bundledStrings;
+  let savedSrc = new Uint8Array(src.slice(0, srcEnd));
+  let savedStructures = currentStructures;
+  let savedStructuresContents = currentStructures.slice(0, currentStructures.length);
+  let savedPackr = currentUnpackr;
+  let savedSequentialMode = sequentialMode;
+  let value2 = callback();
+  srcEnd = savedSrcEnd;
+  position = savedPosition;
+  stringPosition = savedStringPosition;
+  srcStringStart = savedSrcStringStart;
+  srcStringEnd = savedSrcStringEnd;
+  srcString = savedSrcString;
+  strings = savedStrings;
+  referenceMap = savedReferenceMap;
+  bundledStrings = savedBundledStrings;
+  src = savedSrc;
+  sequentialMode = savedSequentialMode;
+  currentStructures = savedStructures;
+  currentStructures.splice(0, currentStructures.length, ...savedStructuresContents);
+  currentUnpackr = savedPackr;
+  dataView = new DataView(src.buffer, src.byteOffset, src.byteLength);
+  return value2;
+}
+function clearSource() {
+  src = null;
+  referenceMap = null;
+  currentStructures = null;
+}
+var mult10 = new Array(147);
+for (let i = 0;i < 256; i++) {
+  mult10[i] = +("1e" + Math.floor(45.15 - i * 0.30103));
+}
+var defaultUnpackr = new Unpackr({ useRecords: false });
+var unpack = defaultUnpackr.unpack;
+var unpackMultiple = defaultUnpackr.unpackMultiple;
+var decode = defaultUnpackr.unpack;
+var f32Array = new Float32Array(1);
+var u8Array = new Uint8Array(f32Array.buffer, 0, 4);
+function setReadStruct(updatedReadStruct, loadedStructs, saveState2) {
+  readStruct = updatedReadStruct;
+  onLoadedStructures = loadedStructs;
+  onSaveState = saveState2;
+}
+// node_modules/msgpackr/pack.js
+var textEncoder;
+try {
+  textEncoder = new TextEncoder;
+} catch (error) {}
+var extensions;
+var extensionClasses;
+var hasNodeBuffer = typeof Buffer !== "undefined";
+var ByteArrayAllocate = hasNodeBuffer ? function(length) {
+  return Buffer.allocUnsafeSlow(length);
+} : Uint8Array;
+var ByteArray = hasNodeBuffer ? Buffer : Uint8Array;
+var MAX_BUFFER_SIZE = hasNodeBuffer ? 4294967296 : 2144337920;
+var target;
+var keysTarget;
+var targetView;
+var position2 = 0;
+var safeEnd;
+var bundledStrings2 = null;
+var writeStructSlots;
+var MAX_BUNDLE_SIZE = 21760;
+var hasNonLatin = /[\u0080-\uFFFF]/;
+var RECORD_SYMBOL = Symbol("record-id");
+
+class Packr extends Unpackr {
+  constructor(options) {
+    super(options);
+    this.offset = 0;
+    let typeBuffer;
+    let start;
+    let hasSharedUpdate;
+    let structures;
+    let referenceMap2;
+    let encodeUtf8 = ByteArray.prototype.utf8Write ? function(string, position3) {
+      return target.utf8Write(string, position3, target.byteLength - position3);
+    } : textEncoder && textEncoder.encodeInto ? function(string, position3) {
+      return textEncoder.encodeInto(string, target.subarray(position3)).written;
+    } : false;
+    let packr = this;
+    if (!options)
+      options = {};
+    let isSequential = options && options.sequential;
+    let hasSharedStructures = options.structures || options.saveStructures;
+    let maxSharedStructures = options.maxSharedStructures;
+    if (maxSharedStructures == null)
+      maxSharedStructures = hasSharedStructures ? 32 : 0;
+    if (maxSharedStructures > 8160)
+      throw new Error("Maximum maxSharedStructure is 8160");
+    if (options.structuredClone && options.moreTypes == undefined) {
+      this.moreTypes = true;
+    }
+    let maxOwnStructures = options.maxOwnStructures;
+    if (maxOwnStructures == null)
+      maxOwnStructures = hasSharedStructures ? 32 : 64;
+    if (!this.structures && options.useRecords != false)
+      this.structures = [];
+    let useTwoByteRecords = maxSharedStructures > 32 || maxOwnStructures + maxSharedStructures > 64;
+    let sharedLimitId = maxSharedStructures + 64;
+    let maxStructureId = maxSharedStructures + maxOwnStructures + 64;
+    if (maxStructureId > 8256) {
+      throw new Error("Maximum maxSharedStructure + maxOwnStructure is 8192");
+    }
+    let recordIdsToRemove = [];
+    let transitionsCount = 0;
+    let serializationsSinceTransitionRebuild = 0;
+    this.pack = this.encode = function(value2, encodeOptions) {
+      if (!target) {
+        target = new ByteArrayAllocate(8192);
+        targetView = target.dataView || (target.dataView = new DataView(target.buffer, 0, 8192));
+        position2 = 0;
+      }
+      safeEnd = target.length - 10;
+      if (safeEnd - position2 < 2048) {
+        target = new ByteArrayAllocate(target.length);
+        targetView = target.dataView || (target.dataView = new DataView(target.buffer, 0, target.length));
+        safeEnd = target.length - 10;
+        position2 = 0;
+      } else
+        position2 = position2 + 7 & 2147483640;
+      start = position2;
+      if (encodeOptions & RESERVE_START_SPACE)
+        position2 += encodeOptions & 255;
+      referenceMap2 = packr.structuredClone ? new Map : null;
+      if (packr.bundleStrings && typeof value2 !== "string") {
+        bundledStrings2 = [];
+        bundledStrings2.size = Infinity;
+      } else
+        bundledStrings2 = null;
+      structures = packr.structures;
+      if (structures) {
+        if (structures.uninitialized)
+          structures = packr._mergeStructures(packr.getStructures());
+        let sharedLength = structures.sharedLength || 0;
+        if (sharedLength > maxSharedStructures) {
+          throw new Error("Shared structures is larger than maximum shared structures, try increasing maxSharedStructures to " + structures.sharedLength);
+        }
+        if (!structures.transitions) {
+          structures.transitions = Object.create(null);
+          for (let i = 0;i < sharedLength; i++) {
+            let keys = structures[i];
+            if (!keys)
+              continue;
+            let nextTransition, transition = structures.transitions;
+            for (let j = 0, l = keys.length;j < l; j++) {
+              let key = keys[j];
+              nextTransition = transition[key];
+              if (!nextTransition) {
+                nextTransition = transition[key] = Object.create(null);
+              }
+              transition = nextTransition;
+            }
+            transition[RECORD_SYMBOL] = i + 64;
+          }
+          this.lastNamedStructuresLength = sharedLength;
+        }
+        if (!isSequential) {
+          structures.nextId = sharedLength + 64;
+        }
+      }
+      if (hasSharedUpdate)
+        hasSharedUpdate = false;
+      let encodingError;
+      try {
+        if (packr.randomAccessStructure && value2 && typeof value2 === "object") {
+          if (value2.constructor === Object)
+            writeStruct(value2);
+          else if (value2.constructor !== Map && !Array.isArray(value2) && !extensionClasses.some((extClass) => value2 instanceof extClass)) {
+            writeStruct(value2.toJSON ? value2.toJSON() : value2);
+          } else
+            pack(value2);
+        } else
+          pack(value2);
+        let lastBundle = bundledStrings2;
+        if (bundledStrings2)
+          writeBundles(start, pack, 0);
+        if (referenceMap2 && referenceMap2.idsToInsert) {
+          let idsToInsert = referenceMap2.idsToInsert.sort((a, b) => a.offset > b.offset ? 1 : -1);
+          let i = idsToInsert.length;
+          let incrementPosition = -1;
+          while (lastBundle && i > 0) {
+            let insertionPoint = idsToInsert[--i].offset + start;
+            if (insertionPoint < lastBundle.stringsPosition + start && incrementPosition === -1)
+              incrementPosition = 0;
+            if (insertionPoint > lastBundle.position + start) {
+              if (incrementPosition >= 0)
+                incrementPosition += 6;
+            } else {
+              if (incrementPosition >= 0) {
+                targetView.setUint32(lastBundle.position + start, targetView.getUint32(lastBundle.position + start) + incrementPosition);
+                incrementPosition = -1;
+              }
+              lastBundle = lastBundle.previous;
+              i++;
+            }
+          }
+          if (incrementPosition >= 0 && lastBundle) {
+            targetView.setUint32(lastBundle.position + start, targetView.getUint32(lastBundle.position + start) + incrementPosition);
+          }
+          position2 += idsToInsert.length * 6;
+          if (position2 > safeEnd)
+            makeRoom(position2);
+          packr.offset = position2;
+          let serialized = insertIds(target.subarray(start, position2), idsToInsert);
+          referenceMap2 = null;
+          return serialized;
+        }
+        packr.offset = position2;
+        if (encodeOptions & REUSE_BUFFER_MODE) {
+          target.start = start;
+          target.end = position2;
+          return target;
+        }
+        return target.subarray(start, position2);
+      } catch (error) {
+        encodingError = error;
+        throw error;
+      } finally {
+        if (structures) {
+          resetStructures();
+          if (hasSharedUpdate && packr.saveStructures) {
+            let sharedLength = structures.sharedLength || 0;
+            let returnBuffer = target.subarray(start, position2);
+            let newSharedData = prepareStructures(structures, packr);
+            if (!encodingError) {
+              if (packr.saveStructures(newSharedData, newSharedData.isCompatible) === false) {
+                return packr.pack(value2, encodeOptions);
+              }
+              packr.lastNamedStructuresLength = sharedLength;
+              if (target.length > 1073741824)
+                target = null;
+              return returnBuffer;
+            }
+          }
+        }
+        if (target.length > 1073741824)
+          target = null;
+        if (encodeOptions & RESET_BUFFER_MODE)
+          position2 = start;
+      }
+    };
+    const resetStructures = () => {
+      if (serializationsSinceTransitionRebuild < 10)
+        serializationsSinceTransitionRebuild++;
+      let sharedLength = structures.sharedLength || 0;
+      if (structures.length > sharedLength && !isSequential)
+        structures.length = sharedLength;
+      if (transitionsCount > 1e4) {
+        structures.transitions = null;
+        serializationsSinceTransitionRebuild = 0;
+        transitionsCount = 0;
+        if (recordIdsToRemove.length > 0)
+          recordIdsToRemove = [];
+      } else if (recordIdsToRemove.length > 0 && !isSequential) {
+        for (let i = 0, l = recordIdsToRemove.length;i < l; i++) {
+          recordIdsToRemove[i][RECORD_SYMBOL] = 0;
+        }
+        recordIdsToRemove = [];
+      }
+    };
+    const packArray = (value2) => {
+      var length = value2.length;
+      if (length < 16) {
+        target[position2++] = 144 | length;
+      } else if (length < 65536) {
+        target[position2++] = 220;
+        target[position2++] = length >> 8;
+        target[position2++] = length & 255;
+      } else {
+        target[position2++] = 221;
+        targetView.setUint32(position2, length);
+        position2 += 4;
+      }
+      for (let i = 0;i < length; i++) {
+        pack(value2[i]);
+      }
+    };
+    const pack = (value2) => {
+      if (position2 > safeEnd)
+        target = makeRoom(position2);
+      var type2 = typeof value2;
+      var length;
+      if (type2 === "string") {
+        let strLength = value2.length;
+        if (bundledStrings2 && strLength >= 4 && strLength < 4096) {
+          if ((bundledStrings2.size += strLength) > MAX_BUNDLE_SIZE) {
+            let extStart;
+            let maxBytes2 = (bundledStrings2[0] ? bundledStrings2[0].length * 3 + bundledStrings2[1].length : 0) + 10;
+            if (position2 + maxBytes2 > safeEnd)
+              target = makeRoom(position2 + maxBytes2);
+            let lastBundle;
+            if (bundledStrings2.position) {
+              lastBundle = bundledStrings2;
+              target[position2] = 200;
+              position2 += 3;
+              target[position2++] = 98;
+              extStart = position2 - start;
+              position2 += 4;
+              writeBundles(start, pack, 0);
+              targetView.setUint16(extStart + start - 3, position2 - start - extStart);
+            } else {
+              target[position2++] = 214;
+              target[position2++] = 98;
+              extStart = position2 - start;
+              position2 += 4;
+            }
+            bundledStrings2 = ["", ""];
+            bundledStrings2.previous = lastBundle;
+            bundledStrings2.size = 0;
+            bundledStrings2.position = extStart;
+          }
+          let twoByte = hasNonLatin.test(value2);
+          bundledStrings2[twoByte ? 0 : 1] += value2;
+          target[position2++] = 193;
+          pack(twoByte ? -strLength : strLength);
+          return;
+        }
+        let headerSize;
+        if (strLength < 32) {
+          headerSize = 1;
+        } else if (strLength < 256) {
+          headerSize = 2;
+        } else if (strLength < 65536) {
+          headerSize = 3;
+        } else {
+          headerSize = 5;
+        }
+        let maxBytes = strLength * 3;
+        if (position2 + maxBytes > safeEnd)
+          target = makeRoom(position2 + maxBytes);
+        if (strLength < 64 || !encodeUtf8) {
+          let i, c1, c2, strPosition = position2 + headerSize;
+          for (i = 0;i < strLength; i++) {
+            c1 = value2.charCodeAt(i);
+            if (c1 < 128) {
+              target[strPosition++] = c1;
+            } else if (c1 < 2048) {
+              target[strPosition++] = c1 >> 6 | 192;
+              target[strPosition++] = c1 & 63 | 128;
+            } else if ((c1 & 64512) === 55296 && ((c2 = value2.charCodeAt(i + 1)) & 64512) === 56320) {
+              c1 = 65536 + ((c1 & 1023) << 10) + (c2 & 1023);
+              i++;
+              target[strPosition++] = c1 >> 18 | 240;
+              target[strPosition++] = c1 >> 12 & 63 | 128;
+              target[strPosition++] = c1 >> 6 & 63 | 128;
+              target[strPosition++] = c1 & 63 | 128;
+            } else {
+              target[strPosition++] = c1 >> 12 | 224;
+              target[strPosition++] = c1 >> 6 & 63 | 128;
+              target[strPosition++] = c1 & 63 | 128;
+            }
+          }
+          length = strPosition - position2 - headerSize;
+        } else {
+          length = encodeUtf8(value2, position2 + headerSize);
+        }
+        if (length < 32) {
+          target[position2++] = 160 | length;
+        } else if (length < 256) {
+          if (headerSize < 2) {
+            target.copyWithin(position2 + 2, position2 + 1, position2 + 1 + length);
+          }
+          target[position2++] = 217;
+          target[position2++] = length;
+        } else if (length < 65536) {
+          if (headerSize < 3) {
+            target.copyWithin(position2 + 3, position2 + 2, position2 + 2 + length);
+          }
+          target[position2++] = 218;
+          target[position2++] = length >> 8;
+          target[position2++] = length & 255;
+        } else {
+          if (headerSize < 5) {
+            target.copyWithin(position2 + 5, position2 + 3, position2 + 3 + length);
+          }
+          target[position2++] = 219;
+          targetView.setUint32(position2, length);
+          position2 += 4;
+        }
+        position2 += length;
+      } else if (type2 === "number") {
+        if (value2 >>> 0 === value2) {
+          if (value2 < 32 || value2 < 128 && this.useRecords === false || value2 < 64 && !this.randomAccessStructure) {
+            target[position2++] = value2;
+          } else if (value2 < 256) {
+            target[position2++] = 204;
+            target[position2++] = value2;
+          } else if (value2 < 65536) {
+            target[position2++] = 205;
+            target[position2++] = value2 >> 8;
+            target[position2++] = value2 & 255;
+          } else {
+            target[position2++] = 206;
+            targetView.setUint32(position2, value2);
+            position2 += 4;
+          }
+        } else if (value2 >> 0 === value2) {
+          if (value2 >= -32) {
+            target[position2++] = 256 + value2;
+          } else if (value2 >= -128) {
+            target[position2++] = 208;
+            target[position2++] = value2 + 256;
+          } else if (value2 >= -32768) {
+            target[position2++] = 209;
+            targetView.setInt16(position2, value2);
+            position2 += 2;
+          } else {
+            target[position2++] = 210;
+            targetView.setInt32(position2, value2);
+            position2 += 4;
+          }
+        } else {
+          let useFloat32;
+          if ((useFloat32 = this.useFloat32) > 0 && value2 < 4294967296 && value2 >= -2147483648) {
+            target[position2++] = 202;
+            targetView.setFloat32(position2, value2);
+            let xShifted;
+            if (useFloat32 < 4 || (xShifted = value2 * mult10[(target[position2] & 127) << 1 | target[position2 + 1] >> 7]) >> 0 === xShifted) {
+              position2 += 4;
+              return;
+            } else
+              position2--;
+          }
+          target[position2++] = 203;
+          targetView.setFloat64(position2, value2);
+          position2 += 8;
+        }
+      } else if (type2 === "object" || type2 === "function") {
+        if (!value2)
+          target[position2++] = 192;
+        else {
+          if (referenceMap2) {
+            let referee = referenceMap2.get(value2);
+            if (referee) {
+              if (!referee.id) {
+                let idsToInsert = referenceMap2.idsToInsert || (referenceMap2.idsToInsert = []);
+                referee.id = idsToInsert.push(referee);
+              }
+              target[position2++] = 214;
+              target[position2++] = 112;
+              targetView.setUint32(position2, referee.id);
+              position2 += 4;
+              return;
+            } else
+              referenceMap2.set(value2, { offset: position2 - start });
+          }
+          let constructor = value2.constructor;
+          if (constructor === Object) {
+            writeObject(value2);
+          } else if (constructor === Array) {
+            packArray(value2);
+          } else if (constructor === Map) {
+            if (this.mapAsEmptyObject)
+              target[position2++] = 128;
+            else {
+              length = value2.size;
+              if (length < 16) {
+                target[position2++] = 128 | length;
+              } else if (length < 65536) {
+                target[position2++] = 222;
+                target[position2++] = length >> 8;
+                target[position2++] = length & 255;
+              } else {
+                target[position2++] = 223;
+                targetView.setUint32(position2, length);
+                position2 += 4;
+              }
+              for (let [key, entryValue] of value2) {
+                pack(key);
+                pack(entryValue);
+              }
+            }
+          } else {
+            for (let i = 0, l = extensions.length;i < l; i++) {
+              let extensionClass = extensionClasses[i];
+              if (value2 instanceof extensionClass) {
+                let extension = extensions[i];
+                if (extension.write) {
+                  if (extension.type) {
+                    target[position2++] = 212;
+                    target[position2++] = extension.type;
+                    target[position2++] = 0;
+                  }
+                  let writeResult = extension.write.call(this, value2);
+                  if (writeResult === value2) {
+                    if (Array.isArray(value2)) {
+                      packArray(value2);
+                    } else {
+                      writeObject(value2);
+                    }
+                  } else {
+                    pack(writeResult);
+                  }
+                  return;
+                }
+                let currentTarget = target;
+                let currentTargetView = targetView;
+                let currentPosition = position2;
+                target = null;
+                let result;
+                try {
+                  result = extension.pack.call(this, value2, (size) => {
+                    target = currentTarget;
+                    currentTarget = null;
+                    position2 += size;
+                    if (position2 > safeEnd)
+                      makeRoom(position2);
+                    return {
+                      target,
+                      targetView,
+                      position: position2 - size
+                    };
+                  }, pack);
+                } finally {
+                  if (currentTarget) {
+                    target = currentTarget;
+                    targetView = currentTargetView;
+                    position2 = currentPosition;
+                    safeEnd = target.length - 10;
+                  }
+                }
+                if (result) {
+                  if (result.length + position2 > safeEnd)
+                    makeRoom(result.length + position2);
+                  position2 = writeExtensionData(result, target, position2, extension.type);
+                }
+                return;
+              }
+            }
+            if (Array.isArray(value2)) {
+              packArray(value2);
+            } else {
+              if (value2.toJSON) {
+                const json = value2.toJSON();
+                if (json !== value2)
+                  return pack(json);
+              }
+              if (type2 === "function")
+                return pack(this.writeFunction && this.writeFunction(value2));
+              writeObject(value2);
+            }
+          }
+        }
+      } else if (type2 === "boolean") {
+        target[position2++] = value2 ? 195 : 194;
+      } else if (type2 === "bigint") {
+        if (value2 < 9223372036854776000 && value2 >= -9223372036854776000) {
+          target[position2++] = 211;
+          targetView.setBigInt64(position2, value2);
+        } else if (value2 < 18446744073709552000 && value2 > 0) {
+          target[position2++] = 207;
+          targetView.setBigUint64(position2, value2);
+        } else {
+          if (this.largeBigIntToFloat) {
+            target[position2++] = 203;
+            targetView.setFloat64(position2, Number(value2));
+          } else if (this.largeBigIntToString) {
+            return pack(value2.toString());
+          } else if (this.useBigIntExtension || this.moreTypes) {
+            let empty = value2 < 0 ? BigInt(-1) : BigInt(0);
+            let array;
+            if (value2 >> BigInt(65536) === empty) {
+              let mask = BigInt(18446744073709552000) - BigInt(1);
+              let chunks = [];
+              while (true) {
+                chunks.push(value2 & mask);
+                if (value2 >> BigInt(63) === empty)
+                  break;
+                value2 >>= BigInt(64);
+              }
+              array = new Uint8Array(new BigUint64Array(chunks).buffer);
+              array.reverse();
+            } else {
+              let invert = value2 < 0;
+              let string = (invert ? ~value2 : value2).toString(16);
+              if (string.length % 2) {
+                string = "0" + string;
+              } else if (parseInt(string.charAt(0), 16) >= 8) {
+                string = "00" + string;
+              }
+              if (hasNodeBuffer) {
+                array = Buffer.from(string, "hex");
+              } else {
+                array = new Uint8Array(string.length / 2);
+                for (let i = 0;i < array.length; i++) {
+                  array[i] = parseInt(string.slice(i * 2, i * 2 + 2), 16);
+                }
+              }
+              if (invert) {
+                for (let i = 0;i < array.length; i++)
+                  array[i] = ~array[i];
+              }
+            }
+            if (array.length + position2 > safeEnd)
+              makeRoom(array.length + position2);
+            position2 = writeExtensionData(array, target, position2, 66);
+            return;
+          } else {
+            throw new RangeError(value2 + " was too large to fit in MessagePack 64-bit integer format, use" + " useBigIntExtension, or set largeBigIntToFloat to convert to float-64, or set" + " largeBigIntToString to convert to string");
+          }
+        }
+        position2 += 8;
+      } else if (type2 === "undefined") {
+        if (this.encodeUndefinedAsNil)
+          target[position2++] = 192;
+        else {
+          target[position2++] = 212;
+          target[position2++] = 0;
+          target[position2++] = 0;
+        }
+      } else {
+        throw new Error("Unknown type: " + type2);
+      }
+    };
+    const writePlainObject = this.variableMapSize || this.coercibleKeyAsNumber || this.skipValues ? (object) => {
+      let keys;
+      if (this.skipValues) {
+        keys = [];
+        for (let key2 in object) {
+          if ((typeof object.hasOwnProperty !== "function" || object.hasOwnProperty(key2)) && !this.skipValues.includes(object[key2]))
+            keys.push(key2);
+        }
+      } else {
+        keys = Object.keys(object);
+      }
+      let length = keys.length;
+      if (length < 16) {
+        target[position2++] = 128 | length;
+      } else if (length < 65536) {
+        target[position2++] = 222;
+        target[position2++] = length >> 8;
+        target[position2++] = length & 255;
+      } else {
+        target[position2++] = 223;
+        targetView.setUint32(position2, length);
+        position2 += 4;
+      }
+      let key;
+      if (this.coercibleKeyAsNumber) {
+        for (let i = 0;i < length; i++) {
+          key = keys[i];
+          let num = Number(key);
+          pack(isNaN(num) ? key : num);
+          pack(object[key]);
+        }
+      } else {
+        for (let i = 0;i < length; i++) {
+          pack(key = keys[i]);
+          pack(object[key]);
+        }
+      }
+    } : (object) => {
+      target[position2++] = 222;
+      let objectOffset = position2 - start;
+      position2 += 2;
+      let size = 0;
+      for (let key in object) {
+        if (typeof object.hasOwnProperty !== "function" || object.hasOwnProperty(key)) {
+          pack(key);
+          pack(object[key]);
+          size++;
+        }
+      }
+      if (size > 65535) {
+        throw new Error("Object is too large to serialize with fast 16-bit map size," + ' use the "variableMapSize" option to serialize this object');
+      }
+      target[objectOffset++ + start] = size >> 8;
+      target[objectOffset + start] = size & 255;
+    };
+    const writeRecord = this.useRecords === false ? writePlainObject : options.progressiveRecords && !useTwoByteRecords ? (object) => {
+      let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
+      let objectOffset = position2++ - start;
+      let wroteKeys;
+      for (let key in object) {
+        if (typeof object.hasOwnProperty !== "function" || object.hasOwnProperty(key)) {
+          nextTransition = transition[key];
+          if (nextTransition)
+            transition = nextTransition;
+          else {
+            let keys = Object.keys(object);
+            let lastTransition = transition;
+            transition = structures.transitions;
+            let newTransitions = 0;
+            for (let i = 0, l = keys.length;i < l; i++) {
+              let key2 = keys[i];
+              nextTransition = transition[key2];
+              if (!nextTransition) {
+                nextTransition = transition[key2] = Object.create(null);
+                newTransitions++;
+              }
+              transition = nextTransition;
+            }
+            if (objectOffset + start + 1 == position2) {
+              position2--;
+              newRecord(transition, keys, newTransitions);
+            } else
+              insertNewRecord(transition, keys, objectOffset, newTransitions);
+            wroteKeys = true;
+            transition = lastTransition[key];
+          }
+          pack(object[key]);
+        }
+      }
+      if (!wroteKeys) {
+        let recordId = transition[RECORD_SYMBOL];
+        if (recordId)
+          target[objectOffset + start] = recordId;
+        else
+          insertNewRecord(transition, Object.keys(object), objectOffset, 0);
+      }
+    } : (object) => {
+      let nextTransition, transition = structures.transitions || (structures.transitions = Object.create(null));
+      let newTransitions = 0;
+      for (let key in object)
+        if (typeof object.hasOwnProperty !== "function" || object.hasOwnProperty(key)) {
+          nextTransition = transition[key];
+          if (!nextTransition) {
+            nextTransition = transition[key] = Object.create(null);
+            newTransitions++;
+          }
+          transition = nextTransition;
+        }
+      let recordId = transition[RECORD_SYMBOL];
+      if (recordId) {
+        if (recordId >= 96 && useTwoByteRecords) {
+          target[position2++] = ((recordId -= 96) & 31) + 96;
+          target[position2++] = recordId >> 5;
+        } else
+          target[position2++] = recordId;
+      } else {
+        newRecord(transition, transition.__keys__ || Object.keys(object), newTransitions);
+      }
+      for (let key in object)
+        if (typeof object.hasOwnProperty !== "function" || object.hasOwnProperty(key)) {
+          pack(object[key]);
+        }
+    };
+    const checkUseRecords = typeof this.useRecords == "function" && this.useRecords;
+    const writeObject = checkUseRecords ? (object) => {
+      checkUseRecords(object) ? writeRecord(object) : writePlainObject(object);
+    } : writeRecord;
+    const makeRoom = (end) => {
+      let newSize;
+      if (end > 16777216) {
+        if (end - start > MAX_BUFFER_SIZE)
+          throw new Error("Packed buffer would be larger than maximum buffer size");
+        newSize = Math.min(MAX_BUFFER_SIZE, Math.round(Math.max((end - start) * (end > 67108864 ? 1.25 : 2), 4194304) / 4096) * 4096);
+      } else
+        newSize = (Math.max(end - start << 2, target.length - 1) >> 12) + 1 << 12;
+      let newBuffer = new ByteArrayAllocate(newSize);
+      targetView = newBuffer.dataView || (newBuffer.dataView = new DataView(newBuffer.buffer, 0, newSize));
+      end = Math.min(end, target.length);
+      if (target.copy)
+        target.copy(newBuffer, 0, start, end);
+      else
+        newBuffer.set(target.slice(start, end));
+      position2 -= start;
+      start = 0;
+      safeEnd = newBuffer.length - 10;
+      return target = newBuffer;
+    };
+    const newRecord = (transition, keys, newTransitions) => {
+      let recordId = structures.nextId;
+      if (!recordId)
+        recordId = 64;
+      if (recordId < sharedLimitId && this.shouldShareStructure && !this.shouldShareStructure(keys)) {
+        recordId = structures.nextOwnId;
+        if (!(recordId < maxStructureId))
+          recordId = sharedLimitId;
+        structures.nextOwnId = recordId + 1;
+      } else {
+        if (recordId >= maxStructureId)
+          recordId = sharedLimitId;
+        structures.nextId = recordId + 1;
+      }
+      let highByte = keys.highByte = recordId >= 96 && useTwoByteRecords ? recordId - 96 >> 5 : -1;
+      transition[RECORD_SYMBOL] = recordId;
+      transition.__keys__ = keys;
+      structures[recordId - 64] = keys;
+      if (recordId < sharedLimitId) {
+        keys.isShared = true;
+        structures.sharedLength = recordId - 63;
+        hasSharedUpdate = true;
+        if (highByte >= 0) {
+          target[position2++] = (recordId & 31) + 96;
+          target[position2++] = highByte;
+        } else {
+          target[position2++] = recordId;
+        }
+      } else {
+        if (highByte >= 0) {
+          target[position2++] = 213;
+          target[position2++] = 114;
+          target[position2++] = (recordId & 31) + 96;
+          target[position2++] = highByte;
+        } else {
+          target[position2++] = 212;
+          target[position2++] = 114;
+          target[position2++] = recordId;
+        }
+        if (newTransitions)
+          transitionsCount += serializationsSinceTransitionRebuild * newTransitions;
+        if (recordIdsToRemove.length >= maxOwnStructures)
+          recordIdsToRemove.shift()[RECORD_SYMBOL] = 0;
+        recordIdsToRemove.push(transition);
+        pack(keys);
+      }
+    };
+    const insertNewRecord = (transition, keys, insertionOffset, newTransitions) => {
+      let mainTarget = target;
+      let mainPosition = position2;
+      let mainSafeEnd = safeEnd;
+      let mainStart = start;
+      target = keysTarget;
+      position2 = 0;
+      start = 0;
+      if (!target)
+        keysTarget = target = new ByteArrayAllocate(8192);
+      safeEnd = target.length - 10;
+      newRecord(transition, keys, newTransitions);
+      keysTarget = target;
+      let keysPosition = position2;
+      target = mainTarget;
+      position2 = mainPosition;
+      safeEnd = mainSafeEnd;
+      start = mainStart;
+      if (keysPosition > 1) {
+        let newEnd = position2 + keysPosition - 1;
+        if (newEnd > safeEnd)
+          makeRoom(newEnd);
+        let insertionPosition = insertionOffset + start;
+        target.copyWithin(insertionPosition + keysPosition, insertionPosition + 1, position2);
+        target.set(keysTarget.slice(0, keysPosition), insertionPosition);
+        position2 = newEnd;
+      } else {
+        target[insertionOffset + start] = keysTarget[0];
+      }
+    };
+    const writeStruct = (object) => {
+      let newPosition = writeStructSlots(object, target, start, position2, structures, makeRoom, (value2, newPosition2, notifySharedUpdate) => {
+        if (notifySharedUpdate)
+          return hasSharedUpdate = true;
+        position2 = newPosition2;
+        let startTarget = target;
+        pack(value2);
+        resetStructures();
+        if (startTarget !== target) {
+          return { position: position2, targetView, target };
+        }
+        return position2;
+      }, this);
+      if (newPosition === 0)
+        return writeObject(object);
+      position2 = newPosition;
+    };
+  }
+  useBuffer(buffer) {
+    target = buffer;
+    target.dataView || (target.dataView = new DataView(target.buffer, target.byteOffset, target.byteLength));
+    targetView = target.dataView;
+    position2 = 0;
+  }
+  set position(value2) {
+    position2 = value2;
+  }
+  get position() {
+    return position2;
+  }
+  clearSharedData() {
+    if (this.structures)
+      this.structures = [];
+    if (this.typedStructs)
+      this.typedStructs = [];
+  }
+}
+extensionClasses = [Date, Set, Error, RegExp, ArrayBuffer, Object.getPrototypeOf(Uint8Array.prototype).constructor, DataView, C1Type];
+extensions = [{
+  pack(date, allocateForWrite, pack) {
+    let seconds = date.getTime() / 1000;
+    if ((this.useTimestamp32 || date.getMilliseconds() === 0) && seconds >= 0 && seconds < 4294967296) {
+      let { target: target2, targetView: targetView2, position: position3 } = allocateForWrite(6);
+      target2[position3++] = 214;
+      target2[position3++] = 255;
+      targetView2.setUint32(position3, seconds);
+    } else if (seconds > 0 && seconds < 4294967296) {
+      let { target: target2, targetView: targetView2, position: position3 } = allocateForWrite(10);
+      target2[position3++] = 215;
+      target2[position3++] = 255;
+      targetView2.setUint32(position3, date.getMilliseconds() * 4000000 + (seconds / 1000 / 4294967296 >> 0));
+      targetView2.setUint32(position3 + 4, seconds);
+    } else if (isNaN(seconds)) {
+      if (this.onInvalidDate) {
+        allocateForWrite(0);
+        return pack(this.onInvalidDate());
+      }
+      let { target: target2, targetView: targetView2, position: position3 } = allocateForWrite(3);
+      target2[position3++] = 212;
+      target2[position3++] = 255;
+      target2[position3++] = 255;
+    } else {
+      let { target: target2, targetView: targetView2, position: position3 } = allocateForWrite(15);
+      target2[position3++] = 199;
+      target2[position3++] = 12;
+      target2[position3++] = 255;
+      targetView2.setUint32(position3, date.getMilliseconds() * 1e6);
+      targetView2.setBigInt64(position3 + 4, BigInt(Math.floor(seconds)));
+    }
+  }
+}, {
+  pack(set, allocateForWrite, pack) {
+    if (this.setAsEmptyObject) {
+      allocateForWrite(0);
+      return pack({});
+    }
+    let array = Array.from(set);
+    let { target: target2, position: position3 } = allocateForWrite(this.moreTypes ? 3 : 0);
+    if (this.moreTypes) {
+      target2[position3++] = 212;
+      target2[position3++] = 115;
+      target2[position3++] = 0;
+    }
+    pack(array);
+  }
+}, {
+  pack(error, allocateForWrite, pack) {
+    let { target: target2, position: position3 } = allocateForWrite(this.moreTypes ? 3 : 0);
+    if (this.moreTypes) {
+      target2[position3++] = 212;
+      target2[position3++] = 101;
+      target2[position3++] = 0;
+    }
+    pack([error.name, error.message, error.cause]);
+  }
+}, {
+  pack(regex, allocateForWrite, pack) {
+    let { target: target2, position: position3 } = allocateForWrite(this.moreTypes ? 3 : 0);
+    if (this.moreTypes) {
+      target2[position3++] = 212;
+      target2[position3++] = 120;
+      target2[position3++] = 0;
+    }
+    pack([regex.source, regex.flags]);
+  }
+}, {
+  pack(arrayBuffer, allocateForWrite) {
+    if (this.moreTypes)
+      writeExtBuffer(arrayBuffer, 16, allocateForWrite);
+    else
+      writeBuffer(hasNodeBuffer ? Buffer.from(arrayBuffer) : new Uint8Array(arrayBuffer), allocateForWrite);
+  }
+}, {
+  pack(typedArray, allocateForWrite) {
+    let constructor = typedArray.constructor;
+    if (constructor !== ByteArray && this.moreTypes)
+      writeExtBuffer(typedArray, typedArrays.indexOf(constructor.name), allocateForWrite);
+    else
+      writeBuffer(typedArray, allocateForWrite);
+  }
+}, {
+  pack(arrayBuffer, allocateForWrite) {
+    if (this.moreTypes)
+      writeExtBuffer(arrayBuffer, 17, allocateForWrite);
+    else
+      writeBuffer(hasNodeBuffer ? Buffer.from(arrayBuffer) : new Uint8Array(arrayBuffer), allocateForWrite);
+  }
+}, {
+  pack(c1, allocateForWrite) {
+    let { target: target2, position: position3 } = allocateForWrite(1);
+    target2[position3] = 193;
+  }
+}];
+function writeExtBuffer(typedArray, type2, allocateForWrite, encode) {
+  let length = typedArray.byteLength;
+  if (length + 1 < 256) {
+    var { target: target2, position: position3 } = allocateForWrite(4 + length);
+    target2[position3++] = 199;
+    target2[position3++] = length + 1;
+  } else if (length + 1 < 65536) {
+    var { target: target2, position: position3 } = allocateForWrite(5 + length);
+    target2[position3++] = 200;
+    target2[position3++] = length + 1 >> 8;
+    target2[position3++] = length + 1 & 255;
+  } else {
+    var { target: target2, position: position3, targetView: targetView2 } = allocateForWrite(7 + length);
+    target2[position3++] = 201;
+    targetView2.setUint32(position3, length + 1);
+    position3 += 4;
+  }
+  target2[position3++] = 116;
+  target2[position3++] = type2;
+  if (!typedArray.buffer)
+    typedArray = new Uint8Array(typedArray);
+  target2.set(new Uint8Array(typedArray.buffer, typedArray.byteOffset, typedArray.byteLength), position3);
+}
+function writeBuffer(buffer, allocateForWrite) {
+  let length = buffer.byteLength;
+  var target2, position3;
+  if (length < 256) {
+    var { target: target2, position: position3 } = allocateForWrite(length + 2);
+    target2[position3++] = 196;
+    target2[position3++] = length;
+  } else if (length < 65536) {
+    var { target: target2, position: position3 } = allocateForWrite(length + 3);
+    target2[position3++] = 197;
+    target2[position3++] = length >> 8;
+    target2[position3++] = length & 255;
+  } else {
+    var { target: target2, position: position3, targetView: targetView2 } = allocateForWrite(length + 5);
+    target2[position3++] = 198;
+    targetView2.setUint32(position3, length);
+    position3 += 4;
+  }
+  target2.set(buffer, position3);
+}
+function writeExtensionData(result, target2, position3, type2) {
+  let length = result.length;
+  switch (length) {
+    case 1:
+      target2[position3++] = 212;
+      break;
+    case 2:
+      target2[position3++] = 213;
+      break;
+    case 4:
+      target2[position3++] = 214;
+      break;
+    case 8:
+      target2[position3++] = 215;
+      break;
+    case 16:
+      target2[position3++] = 216;
+      break;
+    default:
+      if (length < 256) {
+        target2[position3++] = 199;
+        target2[position3++] = length;
+      } else if (length < 65536) {
+        target2[position3++] = 200;
+        target2[position3++] = length >> 8;
+        target2[position3++] = length & 255;
+      } else {
+        target2[position3++] = 201;
+        target2[position3++] = length >> 24;
+        target2[position3++] = length >> 16 & 255;
+        target2[position3++] = length >> 8 & 255;
+        target2[position3++] = length & 255;
+      }
+  }
+  target2[position3++] = type2;
+  target2.set(result, position3);
+  position3 += length;
+  return position3;
+}
+function insertIds(serialized, idsToInsert) {
+  let nextId;
+  let distanceToMove = idsToInsert.length * 6;
+  let lastEnd = serialized.length - distanceToMove;
+  while (nextId = idsToInsert.pop()) {
+    let offset = nextId.offset;
+    let id = nextId.id;
+    serialized.copyWithin(offset + distanceToMove, offset, lastEnd);
+    distanceToMove -= 6;
+    let position3 = offset + distanceToMove;
+    serialized[position3++] = 214;
+    serialized[position3++] = 105;
+    serialized[position3++] = id >> 24;
+    serialized[position3++] = id >> 16 & 255;
+    serialized[position3++] = id >> 8 & 255;
+    serialized[position3++] = id & 255;
+    lastEnd = offset;
+  }
+  return serialized;
+}
+function writeBundles(start, pack, incrementPosition) {
+  if (bundledStrings2.length > 0) {
+    targetView.setUint32(bundledStrings2.position + start, position2 + incrementPosition - bundledStrings2.position - start);
+    bundledStrings2.stringsPosition = position2 - start;
+    let writeStrings = bundledStrings2;
+    bundledStrings2 = null;
+    pack(writeStrings[0]);
+    pack(writeStrings[1]);
+  }
+}
+function prepareStructures(structures, packr) {
+  structures.isCompatible = (existingStructures) => {
+    let compatible = !existingStructures || (packr.lastNamedStructuresLength || 0) === existingStructures.length;
+    if (!compatible)
+      packr._mergeStructures(existingStructures);
+    return compatible;
+  };
+  return structures;
+}
+function setWriteStructSlots(writeSlots, makeStructures) {
+  writeStructSlots = writeSlots;
+  prepareStructures = makeStructures;
+}
+var defaultPackr = new Packr({ useRecords: false });
+var pack = defaultPackr.pack;
+var encode = defaultPackr.pack;
+var REUSE_BUFFER_MODE = 512;
+var RESET_BUFFER_MODE = 1024;
+var RESERVE_START_SPACE = 2048;
+// node_modules/msgpackr/struct.js
+var ASCII = 3;
+var NUMBER = 0;
+var UTF8 = 2;
+var OBJECT_DATA = 1;
+var DATE = 16;
+var TYPE_NAMES = ["num", "object", "string", "ascii"];
+TYPE_NAMES[DATE] = "date";
+var float32Headers = [false, true, true, false, false, true, true, false];
+var evalSupported;
+try {
+  new Function("");
+  evalSupported = true;
+} catch (error) {}
+var updatedPosition;
+var hasNodeBuffer2 = typeof Buffer !== "undefined";
+var textEncoder2;
+var currentSource;
+try {
+  textEncoder2 = new TextEncoder;
+} catch (error) {}
+var encodeUtf8 = hasNodeBuffer2 ? function(target2, string, position3) {
+  return target2.utf8Write(string, position3, target2.byteLength - position3);
+} : textEncoder2 && textEncoder2.encodeInto ? function(target2, string, position3) {
+  return textEncoder2.encodeInto(string, target2.subarray(position3)).written;
+} : false;
+var TYPE = Symbol("type");
+var PARENT = Symbol("parent");
+setWriteStructSlots(writeStruct, prepareStructures2);
+function writeStruct(object, target2, encodingStart, position3, structures, makeRoom, pack2, packr) {
+  let typedStructs = packr.typedStructs || (packr.typedStructs = []);
+  let targetView2 = target2.dataView;
+  let refsStartPosition = (typedStructs.lastStringStart || 100) + position3;
+  let safeEnd2 = target2.length - 10;
+  let start = position3;
+  if (position3 > safeEnd2) {
+    target2 = makeRoom(position3);
+    targetView2 = target2.dataView;
+    position3 -= encodingStart;
+    start -= encodingStart;
+    refsStartPosition -= encodingStart;
+    encodingStart = 0;
+    safeEnd2 = target2.length - 10;
+  }
+  let refOffset, refPosition = refsStartPosition;
+  let transition = typedStructs.transitions || (typedStructs.transitions = Object.create(null));
+  let nextId = typedStructs.nextId || typedStructs.length;
+  let headerSize = nextId < 15 ? 1 : nextId < 240 ? 2 : nextId < 61440 ? 3 : nextId < 15728640 ? 4 : 0;
+  if (headerSize === 0)
+    return 0;
+  position3 += headerSize;
+  let queuedReferences = [];
+  let usedAscii0;
+  let keyIndex = 0;
+  for (let key in object) {
+    let value2 = object[key];
+    let nextTransition = transition[key];
+    if (!nextTransition) {
+      transition[key] = nextTransition = {
+        key,
+        parent: transition,
+        enumerationOffset: 0,
+        ascii0: null,
+        ascii8: null,
+        num8: null,
+        string16: null,
+        object16: null,
+        num32: null,
+        float64: null,
+        date64: null
+      };
+    }
+    if (position3 > safeEnd2) {
+      target2 = makeRoom(position3);
+      targetView2 = target2.dataView;
+      position3 -= encodingStart;
+      start -= encodingStart;
+      refsStartPosition -= encodingStart;
+      refPosition -= encodingStart;
+      encodingStart = 0;
+      safeEnd2 = target2.length - 10;
+    }
+    switch (typeof value2) {
+      case "number":
+        let number = value2;
+        if (nextId < 200 || !nextTransition.num64) {
+          if (number >> 0 === number && number < 536870912 && number > -520093696) {
+            if (number < 246 && number >= 0 && (nextTransition.num8 && !(nextId > 200 && nextTransition.num32) || number < 32 && !nextTransition.num32)) {
+              transition = nextTransition.num8 || createTypeTransition(nextTransition, NUMBER, 1);
+              target2[position3++] = number;
+            } else {
+              transition = nextTransition.num32 || createTypeTransition(nextTransition, NUMBER, 4);
+              targetView2.setUint32(position3, number, true);
+              position3 += 4;
+            }
+            break;
+          } else if (number < 4294967296 && number >= -2147483648) {
+            targetView2.setFloat32(position3, number, true);
+            if (float32Headers[target2[position3 + 3] >>> 5]) {
+              let xShifted;
+              if ((xShifted = number * mult10[(target2[position3 + 3] & 127) << 1 | target2[position3 + 2] >> 7]) >> 0 === xShifted) {
+                transition = nextTransition.num32 || createTypeTransition(nextTransition, NUMBER, 4);
+                position3 += 4;
+                break;
+              }
+            }
+          }
+        }
+        transition = nextTransition.num64 || createTypeTransition(nextTransition, NUMBER, 8);
+        targetView2.setFloat64(position3, number, true);
+        position3 += 8;
+        break;
+      case "string":
+        let strLength = value2.length;
+        refOffset = refPosition - refsStartPosition;
+        if ((strLength << 2) + refPosition > safeEnd2) {
+          target2 = makeRoom((strLength << 2) + refPosition);
+          targetView2 = target2.dataView;
+          position3 -= encodingStart;
+          start -= encodingStart;
+          refsStartPosition -= encodingStart;
+          refPosition -= encodingStart;
+          encodingStart = 0;
+          safeEnd2 = target2.length - 10;
+        }
+        if (strLength > 65280 + refOffset >> 2) {
+          queuedReferences.push(key, value2, position3 - start);
+          break;
+        }
+        let isNotAscii;
+        let strStart = refPosition;
+        if (strLength < 64) {
+          let i, c1, c2;
+          for (i = 0;i < strLength; i++) {
+            c1 = value2.charCodeAt(i);
+            if (c1 < 128) {
+              target2[refPosition++] = c1;
+            } else if (c1 < 2048) {
+              isNotAscii = true;
+              target2[refPosition++] = c1 >> 6 | 192;
+              target2[refPosition++] = c1 & 63 | 128;
+            } else if ((c1 & 64512) === 55296 && ((c2 = value2.charCodeAt(i + 1)) & 64512) === 56320) {
+              isNotAscii = true;
+              c1 = 65536 + ((c1 & 1023) << 10) + (c2 & 1023);
+              i++;
+              target2[refPosition++] = c1 >> 18 | 240;
+              target2[refPosition++] = c1 >> 12 & 63 | 128;
+              target2[refPosition++] = c1 >> 6 & 63 | 128;
+              target2[refPosition++] = c1 & 63 | 128;
+            } else {
+              isNotAscii = true;
+              target2[refPosition++] = c1 >> 12 | 224;
+              target2[refPosition++] = c1 >> 6 & 63 | 128;
+              target2[refPosition++] = c1 & 63 | 128;
+            }
+          }
+        } else {
+          refPosition += encodeUtf8(target2, value2, refPosition);
+          isNotAscii = refPosition - strStart > strLength;
+        }
+        if (refOffset < 160 || refOffset < 246 && (nextTransition.ascii8 || nextTransition.string8)) {
+          if (isNotAscii) {
+            if (!(transition = nextTransition.string8)) {
+              if (typedStructs.length > 10 && (transition = nextTransition.ascii8)) {
+                transition.__type = UTF8;
+                nextTransition.ascii8 = null;
+                nextTransition.string8 = transition;
+                pack2(null, 0, true);
+              } else {
+                transition = createTypeTransition(nextTransition, UTF8, 1);
+              }
+            }
+          } else if (refOffset === 0 && !usedAscii0) {
+            usedAscii0 = true;
+            transition = nextTransition.ascii0 || createTypeTransition(nextTransition, ASCII, 0);
+            break;
+          } else if (!(transition = nextTransition.ascii8) && !(typedStructs.length > 10 && (transition = nextTransition.string8)))
+            transition = createTypeTransition(nextTransition, ASCII, 1);
+          target2[position3++] = refOffset;
+        } else {
+          transition = nextTransition.string16 || createTypeTransition(nextTransition, UTF8, 2);
+          targetView2.setUint16(position3, refOffset, true);
+          position3 += 2;
+        }
+        break;
+      case "object":
+        if (value2) {
+          if (value2.constructor === Date) {
+            transition = nextTransition.date64 || createTypeTransition(nextTransition, DATE, 8);
+            targetView2.setFloat64(position3, value2.getTime(), true);
+            position3 += 8;
+          } else {
+            queuedReferences.push(key, value2, keyIndex);
+          }
+          break;
+        } else {
+          nextTransition = anyType(nextTransition, position3, targetView2, -10);
+          if (nextTransition) {
+            transition = nextTransition;
+            position3 = updatedPosition;
+          } else
+            queuedReferences.push(key, value2, keyIndex);
+        }
+        break;
+      case "boolean":
+        transition = nextTransition.num8 || nextTransition.ascii8 || createTypeTransition(nextTransition, NUMBER, 1);
+        target2[position3++] = value2 ? 249 : 248;
+        break;
+      case "undefined":
+        nextTransition = anyType(nextTransition, position3, targetView2, -9);
+        if (nextTransition) {
+          transition = nextTransition;
+          position3 = updatedPosition;
+        } else
+          queuedReferences.push(key, value2, keyIndex);
+        break;
+      default:
+        queuedReferences.push(key, value2, keyIndex);
+    }
+    keyIndex++;
+  }
+  for (let i = 0, l = queuedReferences.length;i < l; ) {
+    let key = queuedReferences[i++];
+    let value2 = queuedReferences[i++];
+    let propertyIndex = queuedReferences[i++];
+    let nextTransition = transition[key];
+    if (!nextTransition) {
+      transition[key] = nextTransition = {
+        key,
+        parent: transition,
+        enumerationOffset: propertyIndex - keyIndex,
+        ascii0: null,
+        ascii8: null,
+        num8: null,
+        string16: null,
+        object16: null,
+        num32: null,
+        float64: null
+      };
+    }
+    let newPosition;
+    if (value2) {
+      let size;
+      refOffset = refPosition - refsStartPosition;
+      if (refOffset < 65280) {
+        transition = nextTransition.object16;
+        if (transition)
+          size = 2;
+        else if (transition = nextTransition.object32)
+          size = 4;
+        else {
+          transition = createTypeTransition(nextTransition, OBJECT_DATA, 2);
+          size = 2;
+        }
+      } else {
+        transition = nextTransition.object32 || createTypeTransition(nextTransition, OBJECT_DATA, 4);
+        size = 4;
+      }
+      newPosition = pack2(value2, refPosition);
+      if (typeof newPosition === "object") {
+        refPosition = newPosition.position;
+        targetView2 = newPosition.targetView;
+        target2 = newPosition.target;
+        refsStartPosition -= encodingStart;
+        position3 -= encodingStart;
+        start -= encodingStart;
+        encodingStart = 0;
+      } else
+        refPosition = newPosition;
+      if (size === 2) {
+        targetView2.setUint16(position3, refOffset, true);
+        position3 += 2;
+      } else {
+        targetView2.setUint32(position3, refOffset, true);
+        position3 += 4;
+      }
+    } else {
+      transition = nextTransition.object16 || createTypeTransition(nextTransition, OBJECT_DATA, 2);
+      targetView2.setInt16(position3, value2 === null ? -10 : -9, true);
+      position3 += 2;
+    }
+    keyIndex++;
+  }
+  let recordId = transition[RECORD_SYMBOL];
+  if (recordId == null) {
+    recordId = packr.typedStructs.length;
+    let structure = [];
+    let nextTransition = transition;
+    let key, type2;
+    while ((type2 = nextTransition.__type) !== undefined) {
+      let size = nextTransition.__size;
+      nextTransition = nextTransition.__parent;
+      key = nextTransition.key;
+      let property = [type2, size, key];
+      if (nextTransition.enumerationOffset)
+        property.push(nextTransition.enumerationOffset);
+      structure.push(property);
+      nextTransition = nextTransition.parent;
+    }
+    structure.reverse();
+    transition[RECORD_SYMBOL] = recordId;
+    packr.typedStructs[recordId] = structure;
+    pack2(null, 0, true);
+  }
+  switch (headerSize) {
+    case 1:
+      if (recordId >= 16)
+        return 0;
+      target2[start] = recordId + 32;
+      break;
+    case 2:
+      if (recordId >= 256)
+        return 0;
+      target2[start] = 56;
+      target2[start + 1] = recordId;
+      break;
+    case 3:
+      if (recordId >= 65536)
+        return 0;
+      target2[start] = 57;
+      targetView2.setUint16(start + 1, recordId, true);
+      break;
+    case 4:
+      if (recordId >= 16777216)
+        return 0;
+      targetView2.setUint32(start, (recordId << 8) + 58, true);
+      break;
+  }
+  if (position3 < refsStartPosition) {
+    if (refsStartPosition === refPosition)
+      return position3;
+    target2.copyWithin(position3, refsStartPosition, refPosition);
+    refPosition += position3 - refsStartPosition;
+    typedStructs.lastStringStart = position3 - start;
+  } else if (position3 > refsStartPosition) {
+    if (refsStartPosition === refPosition)
+      return position3;
+    typedStructs.lastStringStart = position3 - start;
+    return writeStruct(object, target2, encodingStart, start, structures, makeRoom, pack2, packr);
+  }
+  return refPosition;
+}
+function anyType(transition, position3, targetView2, value2) {
+  let nextTransition;
+  if (nextTransition = transition.ascii8 || transition.num8) {
+    targetView2.setInt8(position3, value2, true);
+    updatedPosition = position3 + 1;
+    return nextTransition;
+  }
+  if (nextTransition = transition.string16 || transition.object16) {
+    targetView2.setInt16(position3, value2, true);
+    updatedPosition = position3 + 2;
+    return nextTransition;
+  }
+  if (nextTransition = transition.num32) {
+    targetView2.setUint32(position3, 3758096640 + value2, true);
+    updatedPosition = position3 + 4;
+    return nextTransition;
+  }
+  if (nextTransition = transition.num64) {
+    targetView2.setFloat64(position3, NaN, true);
+    targetView2.setInt8(position3, value2);
+    updatedPosition = position3 + 8;
+    return nextTransition;
+  }
+  updatedPosition = position3;
+  return;
+}
+function createTypeTransition(transition, type2, size) {
+  let typeName = TYPE_NAMES[type2] + (size << 3);
+  let newTransition = transition[typeName] || (transition[typeName] = Object.create(null));
+  newTransition.__type = type2;
+  newTransition.__size = size;
+  newTransition.__parent = transition;
+  return newTransition;
+}
+function onLoadedStructures2(sharedData) {
+  if (!(sharedData instanceof Map))
+    return sharedData;
+  let typed = sharedData.get("typed") || [];
+  if (Object.isFrozen(typed))
+    typed = typed.map((structure) => structure.slice(0));
+  let named = sharedData.get("named");
+  let transitions = Object.create(null);
+  for (let i = 0, l = typed.length;i < l; i++) {
+    let structure = typed[i];
+    let transition = transitions;
+    for (let [type2, size, key] of structure) {
+      let nextTransition = transition[key];
+      if (!nextTransition) {
+        transition[key] = nextTransition = {
+          key,
+          parent: transition,
+          enumerationOffset: 0,
+          ascii0: null,
+          ascii8: null,
+          num8: null,
+          string16: null,
+          object16: null,
+          num32: null,
+          float64: null,
+          date64: null
+        };
+      }
+      transition = createTypeTransition(nextTransition, type2, size);
+    }
+    transition[RECORD_SYMBOL] = i;
+  }
+  typed.transitions = transitions;
+  this.typedStructs = typed;
+  this.lastTypedStructuresLength = typed.length;
+  return named;
+}
+var sourceSymbol = Symbol.for("source");
+function readStruct2(src2, position3, srcEnd2, unpackr) {
+  let recordId = src2[position3++] - 32;
+  if (recordId >= 24) {
+    switch (recordId) {
+      case 24:
+        recordId = src2[position3++];
+        break;
+      case 25:
+        recordId = src2[position3++] + (src2[position3++] << 8);
+        break;
+      case 26:
+        recordId = src2[position3++] + (src2[position3++] << 8) + (src2[position3++] << 16);
+        break;
+      case 27:
+        recordId = src2[position3++] + (src2[position3++] << 8) + (src2[position3++] << 16) + (src2[position3++] << 24);
+        break;
+    }
+  }
+  let structure = unpackr.typedStructs && unpackr.typedStructs[recordId];
+  if (!structure) {
+    src2 = Uint8Array.prototype.slice.call(src2, position3, srcEnd2);
+    srcEnd2 -= position3;
+    position3 = 0;
+    if (!unpackr.getStructures)
+      throw new Error(`Reference to shared structure ${recordId} without getStructures method`);
+    unpackr._mergeStructures(unpackr.getStructures());
+    if (!unpackr.typedStructs)
+      throw new Error("Could not find any shared typed structures");
+    unpackr.lastTypedStructuresLength = unpackr.typedStructs.length;
+    structure = unpackr.typedStructs[recordId];
+    if (!structure)
+      throw new Error("Could not find typed structure " + recordId);
+  }
+  var construct = structure.construct;
+  var fullConstruct = structure.fullConstruct;
+  if (!construct) {
+    construct = structure.construct = function LazyObject() {};
+    fullConstruct = structure.fullConstruct = function LoadedObject() {};
+    fullConstruct.prototype = unpackr.structPrototype || {};
+    var prototype = construct.prototype = unpackr.structPrototype ? Object.create(unpackr.structPrototype) : {};
+    let properties = [];
+    let currentOffset = 0;
+    let lastRefProperty;
+    for (let i = 0, l = structure.length;i < l; i++) {
+      let definition = structure[i];
+      let [type2, size, key, enumerationOffset] = definition;
+      if (key === "__proto__")
+        key = "__proto_";
+      let property = {
+        key,
+        offset: currentOffset
+      };
+      if (enumerationOffset)
+        properties.splice(i + enumerationOffset, 0, property);
+      else
+        properties.push(property);
+      let getRef;
+      switch (size) {
+        case 0:
+          getRef = () => 0;
+          break;
+        case 1:
+          getRef = (source, position4) => {
+            let ref = source.bytes[position4 + property.offset];
+            return ref >= 246 ? toConstant(ref) : ref;
+          };
+          break;
+        case 2:
+          getRef = (source, position4) => {
+            let src3 = source.bytes;
+            let dataView2 = src3.dataView || (src3.dataView = new DataView(src3.buffer, src3.byteOffset, src3.byteLength));
+            let ref = dataView2.getUint16(position4 + property.offset, true);
+            return ref >= 65280 ? toConstant(ref & 255) : ref;
+          };
+          break;
+        case 4:
+          getRef = (source, position4) => {
+            let src3 = source.bytes;
+            let dataView2 = src3.dataView || (src3.dataView = new DataView(src3.buffer, src3.byteOffset, src3.byteLength));
+            let ref = dataView2.getUint32(position4 + property.offset, true);
+            return ref >= 4294967040 ? toConstant(ref & 255) : ref;
+          };
+          break;
+      }
+      property.getRef = getRef;
+      currentOffset += size;
+      let get2;
+      switch (type2) {
+        case ASCII:
+          if (lastRefProperty && !lastRefProperty.next)
+            lastRefProperty.next = property;
+          lastRefProperty = property;
+          property.multiGetCount = 0;
+          get2 = function(source) {
+            let src3 = source.bytes;
+            let position4 = source.position;
+            let refStart = currentOffset + position4;
+            let ref = getRef(source, position4);
+            if (typeof ref !== "number")
+              return ref;
+            let end, next = property.next;
+            while (next) {
+              end = next.getRef(source, position4);
+              if (typeof end === "number")
+                break;
+              else
+                end = null;
+              next = next.next;
+            }
+            if (end == null)
+              end = source.bytesEnd - refStart;
+            if (source.srcString) {
+              return source.srcString.slice(ref, end);
+            }
+            return readString(src3, ref + refStart, end - ref);
+          };
+          break;
+        case UTF8:
+        case OBJECT_DATA:
+          if (lastRefProperty && !lastRefProperty.next)
+            lastRefProperty.next = property;
+          lastRefProperty = property;
+          get2 = function(source) {
+            let position4 = source.position;
+            let refStart = currentOffset + position4;
+            let ref = getRef(source, position4);
+            if (typeof ref !== "number")
+              return ref;
+            let src3 = source.bytes;
+            let end, next = property.next;
+            while (next) {
+              end = next.getRef(source, position4);
+              if (typeof end === "number")
+                break;
+              else
+                end = null;
+              next = next.next;
+            }
+            if (end == null)
+              end = source.bytesEnd - refStart;
+            if (type2 === UTF8) {
+              return src3.toString("utf8", ref + refStart, end + refStart);
+            } else {
+              currentSource = source;
+              try {
+                return unpackr.unpack(src3, { start: ref + refStart, end: end + refStart });
+              } finally {
+                currentSource = null;
+              }
+            }
+          };
+          break;
+        case NUMBER:
+          switch (size) {
+            case 4:
+              get2 = function(source) {
+                let src3 = source.bytes;
+                let dataView2 = src3.dataView || (src3.dataView = new DataView(src3.buffer, src3.byteOffset, src3.byteLength));
+                let position4 = source.position + property.offset;
+                let value2 = dataView2.getInt32(position4, true);
+                if (value2 < 536870912) {
+                  if (value2 > -520093696)
+                    return value2;
+                  if (value2 > -536870912)
+                    return toConstant(value2 & 255);
+                }
+                let fValue = dataView2.getFloat32(position4, true);
+                let multiplier = mult10[(src3[position4 + 3] & 127) << 1 | src3[position4 + 2] >> 7];
+                return (multiplier * fValue + (fValue > 0 ? 0.5 : -0.5) >> 0) / multiplier;
+              };
+              break;
+            case 8:
+              get2 = function(source) {
+                let src3 = source.bytes;
+                let dataView2 = src3.dataView || (src3.dataView = new DataView(src3.buffer, src3.byteOffset, src3.byteLength));
+                let value2 = dataView2.getFloat64(source.position + property.offset, true);
+                if (isNaN(value2)) {
+                  let byte = src3[source.position + property.offset];
+                  if (byte >= 246)
+                    return toConstant(byte);
+                }
+                return value2;
+              };
+              break;
+            case 1:
+              get2 = function(source) {
+                let src3 = source.bytes;
+                let value2 = src3[source.position + property.offset];
+                return value2 < 246 ? value2 : toConstant(value2);
+              };
+              break;
+          }
+          break;
+        case DATE:
+          get2 = function(source) {
+            let src3 = source.bytes;
+            let dataView2 = src3.dataView || (src3.dataView = new DataView(src3.buffer, src3.byteOffset, src3.byteLength));
+            return new Date(dataView2.getFloat64(source.position + property.offset, true));
+          };
+          break;
+      }
+      property.get = get2;
+    }
+    if (evalSupported) {
+      let objectLiteralProperties = [];
+      let args = [];
+      let i = 0;
+      let hasInheritedProperties;
+      for (let property of properties) {
+        if (unpackr.alwaysLazyProperty && unpackr.alwaysLazyProperty(property.key)) {
+          hasInheritedProperties = true;
+          continue;
+        }
+        Object.defineProperty(prototype, property.key, { get: withSource(property.get), enumerable: true });
+        let valueFunction = "v" + i++;
+        args.push(valueFunction);
+        objectLiteralProperties.push("o[" + JSON.stringify(property.key) + "]=" + valueFunction + "(s)");
+      }
+      if (hasInheritedProperties) {
+        objectLiteralProperties.push("__proto__:this");
+      }
+      let toObject = new Function(...args, "var c=this;return function(s){var o=new c();" + objectLiteralProperties.join(";") + ";return o;}").apply(fullConstruct, properties.map((prop) => prop.get));
+      Object.defineProperty(prototype, "toJSON", {
+        value(omitUnderscoredProperties) {
+          return toObject.call(this, this[sourceSymbol]);
+        }
+      });
+    } else {
+      Object.defineProperty(prototype, "toJSON", {
+        value(omitUnderscoredProperties) {
+          let resolved = {};
+          for (let i = 0, l = properties.length;i < l; i++) {
+            let key = properties[i].key;
+            resolved[key] = this[key];
+          }
+          return resolved;
+        }
+      });
+    }
+  }
+  var instance = new construct;
+  instance[sourceSymbol] = {
+    bytes: src2,
+    position: position3,
+    srcString: "",
+    bytesEnd: srcEnd2
+  };
+  return instance;
+}
+function toConstant(code) {
+  switch (code) {
+    case 246:
+      return null;
+    case 247:
+      return;
+    case 248:
+      return false;
+    case 249:
+      return true;
+  }
+  throw new Error("Unknown constant");
+}
+function withSource(get2) {
+  return function() {
+    return get2(this[sourceSymbol]);
+  };
+}
+function saveState2() {
+  if (currentSource) {
+    currentSource.bytes = Uint8Array.prototype.slice.call(currentSource.bytes, currentSource.position, currentSource.bytesEnd);
+    currentSource.position = 0;
+    currentSource.bytesEnd = currentSource.bytes.length;
+  }
+}
+function prepareStructures2(structures, packr) {
+  if (packr.typedStructs) {
+    let structMap = new Map;
+    structMap.set("named", structures);
+    structMap.set("typed", packr.typedStructs);
+    structures = structMap;
+  }
+  let lastTypedStructuresLength = packr.lastTypedStructuresLength || 0;
+  structures.isCompatible = (existing) => {
+    let compatible = true;
+    if (existing instanceof Map) {
+      let named = existing.get("named") || [];
+      if (named.length !== (packr.lastNamedStructuresLength || 0))
+        compatible = false;
+      let typed = existing.get("typed") || [];
+      if (typed.length !== lastTypedStructuresLength)
+        compatible = false;
+    } else if (existing instanceof Array || Array.isArray(existing)) {
+      if (existing.length !== (packr.lastNamedStructuresLength || 0))
+        compatible = false;
+    }
+    if (!compatible)
+      packr._mergeStructures(existing);
+    return compatible;
+  };
+  packr.lastTypedStructuresLength = packr.typedStructs && packr.typedStructs.length;
+  return structures;
+}
+setReadStruct(readStruct2, onLoadedStructures2, saveState2);
+// node_modules/msgpackr/node-index.js
+var nativeAccelerationDisabled = process.env.MSGPACKR_NATIVE_ACCELERATION_DISABLED !== undefined && process.env.MSGPACKR_NATIVE_ACCELERATION_DISABLED.toLowerCase() === "true";
+if (!nativeAccelerationDisabled) {
+  let extractor;
+  try {
+    if (true)
+      extractor = require_msgpackr_extract();
+    else
+      ;
+    if (extractor)
+      setExtractor(extractor.extractStrings);
+  } catch (error) {}
+}
+
 // node_modules/zod/v4/classic/external.js
 var exports_external = {};
 __export(exports_external, {
@@ -18723,14 +22212,14 @@ __export(exports_external, {
   enum: () => _enum2,
   endsWith: () => _endsWith,
   encodeAsync: () => encodeAsync2,
-  encode: () => encode2,
+  encode: () => encode3,
   emoji: () => emoji2,
   email: () => email2,
   e164: () => e1642,
   discriminatedUnion: () => discriminatedUnion,
   describe: () => describe2,
   decodeAsync: () => decodeAsync2,
-  decode: () => decode2,
+  decode: () => decode3,
   date: () => date3,
   custom: () => custom,
   cuid2: () => cuid22,
@@ -18830,7 +22319,7 @@ __export(exports_external, {
   ZodArray: () => ZodArray,
   ZodAny: () => ZodAny,
   TimePrecision: () => TimePrecision,
-  NEVER: () => NEVER,
+  NEVER: () => NEVER2,
   $output: () => $output,
   $input: () => $input,
   $brand: () => $brand
@@ -18869,10 +22358,10 @@ __export(exports_core2, {
   finalize: () => finalize,
   extractDefs: () => extractDefs,
   encodeAsync: () => encodeAsync,
-  encode: () => encode,
+  encode: () => encode2,
   describe: () => describe,
   decodeAsync: () => decodeAsync,
-  decode: () => decode,
+  decode: () => decode2,
   createToJSONSchemaMethod: () => createToJSONSchemaMethod,
   createStandardJSONSchemaMethod: () => createStandardJSONSchemaMethod,
   config: () => config,
@@ -19004,7 +22493,7 @@ __export(exports_core2, {
   _array: () => _array,
   _any: () => _any,
   TimePrecision: () => TimePrecision,
-  NEVER: () => NEVER,
+  NEVER: () => NEVER2,
   JSONSchemaGenerator: () => JSONSchemaGenerator,
   JSONSchema: () => exports_json_schema,
   Doc: () => Doc,
@@ -19115,7 +22604,7 @@ __export(exports_core2, {
 });
 
 // node_modules/zod/v4/core/core.js
-var NEVER = Object.freeze({
+var NEVER2 = Object.freeze({
   status: "aborted"
 });
 function $constructor(name, initializer, params) {
@@ -19341,8 +22830,8 @@ function defineLazy(object, key, getter) {
 function objectClone(obj) {
   return Object.create(Object.getPrototypeOf(obj), Object.getOwnPropertyDescriptors(obj));
 }
-function assignProp(target, prop, value2) {
-  Object.defineProperty(target, prop, {
+function assignProp(target2, prop, value2) {
+  Object.defineProperty(target2, prop, {
     value: value2,
     writable: true,
     enumerable: true,
@@ -19510,35 +22999,35 @@ function normalizeParams(_params) {
   return params;
 }
 function createTransparentProxy(getter) {
-  let target;
+  let target2;
   return new Proxy({}, {
     get(_, prop, receiver) {
-      target ?? (target = getter());
-      return Reflect.get(target, prop, receiver);
+      target2 ?? (target2 = getter());
+      return Reflect.get(target2, prop, receiver);
     },
     set(_, prop, value2, receiver) {
-      target ?? (target = getter());
-      return Reflect.set(target, prop, value2, receiver);
+      target2 ?? (target2 = getter());
+      return Reflect.set(target2, prop, value2, receiver);
     },
     has(_, prop) {
-      target ?? (target = getter());
-      return Reflect.has(target, prop);
+      target2 ?? (target2 = getter());
+      return Reflect.has(target2, prop);
     },
     deleteProperty(_, prop) {
-      target ?? (target = getter());
-      return Reflect.deleteProperty(target, prop);
+      target2 ?? (target2 = getter());
+      return Reflect.deleteProperty(target2, prop);
     },
     ownKeys(_) {
-      target ?? (target = getter());
-      return Reflect.ownKeys(target);
+      target2 ?? (target2 = getter());
+      return Reflect.ownKeys(target2);
     },
     getOwnPropertyDescriptor(_, prop) {
-      target ?? (target = getter());
-      return Reflect.getOwnPropertyDescriptor(target, prop);
+      target2 ?? (target2 = getter());
+      return Reflect.getOwnPropertyDescriptor(target2, prop);
     },
     defineProperty(_, prop, descriptor) {
-      target ?? (target = getter());
-      return Reflect.defineProperty(target, prop, descriptor);
+      target2 ?? (target2 = getter());
+      return Reflect.defineProperty(target2, prop, descriptor);
     }
   });
 }
@@ -20056,11 +23545,11 @@ var _encode = (_Err) => (schema, value2, _ctx) => {
   const ctx = _ctx ? Object.assign(_ctx, { direction: "backward" }) : { direction: "backward" };
   return _parse(_Err)(schema, value2, ctx);
 };
-var encode = /* @__PURE__ */ _encode($ZodRealError);
+var encode2 = /* @__PURE__ */ _encode($ZodRealError);
 var _decode = (_Err) => (schema, value2, _ctx) => {
   return _parse(_Err)(schema, value2, _ctx);
 };
-var decode = /* @__PURE__ */ _decode($ZodRealError);
+var decode2 = /* @__PURE__ */ _decode($ZodRealError);
 var _encodeAsync = (_Err) => async (schema, value2, _ctx) => {
   const ctx = _ctx ? Object.assign(_ctx, { direction: "backward" }) : { direction: "backward" };
   return _parseAsync(_Err)(schema, value2, ctx);
@@ -29297,15 +32786,15 @@ function _stringFormat(Class2, format, fnOrRegex, _params = {}) {
 }
 // node_modules/zod/v4/core/to-json-schema.js
 function initializeContext(params) {
-  let target = params?.target ?? "draft-2020-12";
-  if (target === "draft-4")
-    target = "draft-04";
-  if (target === "draft-7")
-    target = "draft-07";
+  let target2 = params?.target ?? "draft-2020-12";
+  if (target2 === "draft-4")
+    target2 = "draft-04";
+  if (target2 === "draft-7")
+    target2 = "draft-07";
   return {
     processors: params.processors ?? {},
     metadataRegistry: params?.metadata ?? globalRegistry,
-    target,
+    target: target2,
     unrepresentable: params?.unrepresentable ?? "throw",
     override: params?.override ?? (() => {}),
     io: params?.io ?? "output",
@@ -29634,8 +33123,8 @@ var createToJSONSchemaMethod = (schema, processors = {}) => (params) => {
   return finalize(ctx, schema);
 };
 var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) => {
-  const { libraryOptions, target } = params ?? {};
-  const ctx = initializeContext({ ...libraryOptions ?? {}, target, io, processors });
+  const { libraryOptions, target: target2 } = params ?? {};
+  const ctx = initializeContext({ ...libraryOptions ?? {}, target: target2, io, processors });
   process3(schema, ctx);
   extractDefs(ctx, schema);
   return finalize(ctx, schema);
@@ -30530,8 +34019,8 @@ var parse3 = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
 var safeParseAsync2 = /* @__PURE__ */ _safeParseAsync(ZodRealError);
-var encode2 = /* @__PURE__ */ _encode(ZodRealError);
-var decode2 = /* @__PURE__ */ _decode(ZodRealError);
+var encode3 = /* @__PURE__ */ _encode(ZodRealError);
+var decode3 = /* @__PURE__ */ _decode(ZodRealError);
 var encodeAsync2 = /* @__PURE__ */ _encodeAsync(ZodRealError);
 var decodeAsync2 = /* @__PURE__ */ _decodeAsync(ZodRealError);
 var safeEncode2 = /* @__PURE__ */ _safeEncode(ZodRealError);
@@ -30574,8 +34063,8 @@ var ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
   inst.parseAsync = async (data, params) => parseAsync2(inst, data, params, { callee: inst.parseAsync });
   inst.safeParseAsync = async (data, params) => safeParseAsync2(inst, data, params);
   inst.spa = inst.safeParseAsync;
-  inst.encode = (data, params) => encode2(inst, data, params);
-  inst.decode = (data, params) => decode2(inst, data, params);
+  inst.encode = (data, params) => encode3(inst, data, params);
+  inst.decode = (data, params) => decode3(inst, data, params);
   inst.encodeAsync = async (data, params) => encodeAsync2(inst, data, params);
   inst.decodeAsync = async (data, params) => decodeAsync2(inst, data, params);
   inst.safeEncode = (data, params) => safeEncode2(inst, data, params);
@@ -30597,7 +34086,7 @@ var ZodType = /* @__PURE__ */ $constructor("ZodType", (inst, def) => {
   inst.default = (def2) => _default2(inst, def2);
   inst.prefault = (def2) => prefault(inst, def2);
   inst.catch = (params) => _catch2(inst, params);
-  inst.pipe = (target) => pipe(inst, target);
+  inst.pipe = (target2) => pipe(inst, target2);
   inst.readonly = () => readonly(inst);
   inst.describe = (description) => {
     const cl = inst.clone();
@@ -32134,20 +35623,23 @@ var zod_default = exports_external;
 var zLang = zod_default.enum(["cpp", "python"]);
 var zJob = zod_default.object({
   lang: zLang,
-  file: zod_default.file()
-}).transform(async (input) => {
-  const fileData = await input.file.arrayBuffer();
-  return {
-    ...input,
-    file: Buffer.from(fileData),
-    id: crypto.randomUUID()
-  };
-});
-var zJobResolved = zod_default.object({
-  file: zod_default.instanceof(Buffer),
-  lang: zLang,
+  file: zod_default.file(),
   id: zod_default.uuid()
 });
+var serializeJob = async (input) => {
+  const { file: file2, lang, id } = input;
+  const fileBuf = await file2.arrayBuffer();
+  return pack({
+    lang,
+    id,
+    file: fileBuf
+  });
+};
+var deserializeJob = (input) => {
+  const { lang, id, file: fileBuf } = unpack(input);
+  const file2 = new File([fileBuf], "unnamed");
+  return zJob.parse({ lang, file: file2, id });
+};
 var zJobResult = zod_default.object({
   id: zod_default.uuid(),
   type: zod_default.literal("result"),
@@ -32165,6 +35657,12 @@ var zJobResult = zod_default.object({
   stdout: zod_default.string(),
   stderr: zod_default.string()
 });
+var serializeJobResult = (input) => {
+  return pack(input);
+};
+var deserializeJobResult = (input) => {
+  return zJobResult.parse(unpack(input));
+};
 var zJobStatus = zod_default.object({
   id: zod_default.uuid(),
   type: zod_default.literal("status"),
@@ -32177,13 +35675,17 @@ var zJobStatusOrResult = zod_default.discriminatedUnion("type", [
 
 // src/server/api/judge.ts
 var judge = {
-  submit: publicRoute.input(zJob).output(eventIterator(zJobStatusOrResult)).handler(async function* ({ input, context }) {
+  submit: publicRoute.input(zJob.omit({ id: true })).output(eventIterator(zJobStatusOrResult)).handler(async function* ({ input, context }) {
     const { redisManager, serverLogger } = context;
-    await redisManager.enqueueJob(input);
+    const withId = {
+      ...input,
+      id: crypto.randomUUID()
+    };
+    await redisManager.enqueueJob(withId);
     try {
-      for await (const status of redisManager.jobStatusIterator(input.id, 1e4)) {
+      for await (const status of redisManager.jobStatusIterator(withId.id, 1e4)) {
         if (status.status === "completed") {
-          const result = await redisManager.fetchJobResult(input.id);
+          const result = await redisManager.fetchJobResult(withId.id);
           if (result === null) {
             throw new Error("failed to get job?");
           }
@@ -32191,7 +35693,7 @@ var judge = {
           yield result;
           return;
         } else if (status.status === "timed-out") {
-          const result = await redisManager.fetchJobResult(input.id);
+          const result = await redisManager.fetchJobResult(withId.id);
           if (result === null) {
             yield status;
           } else {
@@ -32201,9 +35703,9 @@ var judge = {
         }
       }
     } catch (e) {
-      serverLogger.error({ e }, "Encountered error in the consumer loop");
+      serverLogger.error({ msg: e.message, stack: e.stack }, "Encountered error in the consumer loop");
     }
-    yield { status: "timed-out", type: "status", id: input.id };
+    yield { status: "timed-out", type: "status", id: withId.id };
     return;
   })
 };
@@ -32213,12 +35715,7 @@ var vm = {
   requestJob: vmRoute.output(zJob.nullable()).handler(async ({ context }) => {
     const { redisManager } = context;
     const data = await redisManager.consumeJob(0);
-    if (data === null)
-      return null;
-    return {
-      ...data,
-      file: new File([data.file], "hello")
-    };
+    return data;
   }),
   submitJobStatus: vmRoute.input(zJobStatus).handler(async ({ input, context }) => {
     const { redisManager } = context;
@@ -32372,17 +35869,14 @@ var keys = {
 };
 async function enqueueJob(redis, input) {
   const jobKey = keys.job(input.id);
-  const fileKey = keys.jobFile(input.id);
+  const serialized = await serializeJob(input);
   try {
-    const { file: file2, ...rest } = input;
-    await redis.hset(jobKey, rest);
-    await redis.set(fileKey, file2);
+    await redis.set(jobKey, serialized);
     //! note: this comes last because if not, its a race condition!
     await redis.lpush(JOB_QUEUE, input.id);
     redisLogger.info({
       JOB_QUEUE,
-      jobKey,
-      fileKey
+      jobKey
     }, "Enqueued job");
   } catch (error48) {
     return handleError("enqueueJob", error48);
@@ -32396,21 +35890,15 @@ async function consumeJob(redis, timeout) {
     }
     const [_, jobId] = result;
     const jobKey = keys.job(jobId);
-    const fileKey = keys.jobFile(jobId);
-    const hgetData = await redis.hgetall(jobKey);
-    const file2 = await redis.getBuffer(fileKey);
-    redisLogger.info({
-      fileKey,
-      jobKey,
-      file: file2?.toString() || null,
-      hgetData
-    }, "Dequeued job");
-    const parsed = zJobResolved.parse({
-      ...hgetData,
-      file: file2
-    });
-    await redis.del(jobKey, fileKey);
-    return parsed;
+    const rawJob = await redis.getBuffer(jobKey);
+    if (rawJob === null) {
+      redisLogger.warn({ jobKey }, "Null job for this key");
+      return null;
+    }
+    redisLogger.info({ jobKey }, "Dequeued job");
+    const job = deserializeJob(rawJob);
+    await redis.del(jobKey);
+    return job;
   } catch (error48) {
     return handleError("consumeJob", error48);
   }
@@ -32418,7 +35906,8 @@ async function consumeJob(redis, timeout) {
 async function submitJobResult(redis, input) {
   const key = keys.result(input.id);
   try {
-    await redis.hset(key, input);
+    await redis.set(key, serializeJobResult(input));
+    redisLogger.info(`Submitted result for key: ${key}, ${JSON.stringify(input, null, 2)}`);
   } catch (error48) {
     return handleError("submitJobResult", error48, { key });
   }
@@ -32426,9 +35915,12 @@ async function submitJobResult(redis, input) {
 async function fetchJobResult(redis, jobId) {
   const key = keys.result(jobId);
   try {
-    const data = await redis.hgetall(key);
-    const parsed = zJobResult.safeParse(data);
-    return parsed.success ? parsed.data : null;
+    const data = await redis.getBuffer(key);
+    if (data === null)
+      return null;
+    const parsed = deserializeJobResult(data);
+    redisLogger.info(`Getting job result for ${key}, data: ${JSON.stringify(parsed, null, 2)}`);
+    return parsed;
   } catch (error48) {
     return handleError("fetchJobResult", error48, { key });
   }
@@ -32720,9 +36212,9 @@ class AsyncDisposeError extends Error {
 class MultiAsyncDisposeError extends Error {
   name = "MultiAsyncDisposeError";
   type = "multiple";
-  constructor(errors3) {
-    super("Multiple disposal errors occurred", { cause: errors3 });
-    this.cause = errors3.map((e) => e.cause);
+  constructor(errors4) {
+    super("Multiple disposal errors occurred", { cause: errors4 });
+    this.cause = errors4.map((e) => e.cause);
   }
 }
 
@@ -32742,9 +36234,9 @@ class AsyncDisposableMap {
   }
   async clear() {
     const disposalPromises = Array.from(this.resources.keys()).map((k) => this.delete(k));
-    const errors3 = (await Promise.allSettled(disposalPromises)).filter((r) => r.status === "rejected").map((r) => r.reason);
-    if (errors3.length !== 0) {
-      throw new MultiAsyncDisposeError(errors3);
+    const errors4 = (await Promise.allSettled(disposalPromises)).filter((r) => r.status === "rejected").map((r) => r.reason);
+    if (errors4.length !== 0) {
+      throw new MultiAsyncDisposeError(errors4);
     }
   }
   async delete(key) {

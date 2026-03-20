@@ -15,7 +15,8 @@ const main = async () => {
     }
 
     if (data) {
-      const fileBuf = data.file;
+      const file = data.file;
+      const txt = Buffer.from(await file.bytes()).toString();
       // we established this:
       // [14:00:00.123] TRACE (1015605): [vm0] (pid 1015644) Submitting job result... string
       console.log("Submitting job result...", txt);
