@@ -100,8 +100,11 @@ export class Server implements AsyncDisposable {
 
   destroy = async () => {
     try {
+      this.serverLogger.debug("Stopping server instance...");
       await this.server.stop(true);
+      this.serverLogger.debug("Stopping redis manager instance...");
       await this.redisManager.destoy();
+      this.serverLogger.info("Server and Redis manager stopped");
     } catch (error) {
       const msg = error instanceof Error ? error.message : "N/A";
       this.serverLogger.error({ msg }, "Error destroying server instance");

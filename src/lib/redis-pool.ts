@@ -23,7 +23,6 @@ export const redisPoolFactory: genericPool.Factory<DisposableRedis> = {
     return ready;
   },
 
-  // note: test async with this
   destroy: async function (client: DisposableRedis) {
     await client[Symbol.asyncDispose]();
   },

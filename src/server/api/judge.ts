@@ -38,11 +38,8 @@ export const judge = {
             return;
           }
         }
-      } catch (e) {
-        serverLogger.error(
-          { msg: e.message, stack: e.stack },
-          "Encountered error in the consumer loop",
-        );
+      } catch {
+        serverLogger.error("Encountered error in the consumer loop");
       }
 
       yield { status: "timed-out", type: "status", id: withId.id };

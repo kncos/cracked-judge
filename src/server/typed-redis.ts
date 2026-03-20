@@ -293,8 +293,11 @@ export class RedisManager {
   };
 
   destoy = async () => {
+    redisLogger.debug("Draining redis pool...");
     await this.redisPool.drain();
+    redisLogger.debug("Clearing redis pool...");
     await this.redisPool.clear();
+    redisLogger.debug("redis manager cleaned up");
   };
 
   enqueueJob = async (input: z.infer<typeof zJob>) => {

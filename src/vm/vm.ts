@@ -92,8 +92,8 @@ export class VM implements AsyncDisposable {
       await Promise.race([this.proc.exited, Bun.sleep(2000)]);
     } finally {
       this.proc.kill();
-      await this.proc.exited;
       await this.stack.disposeAsync();
+      await this.proc.exited;
     }
   };
 

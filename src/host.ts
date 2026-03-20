@@ -35,7 +35,7 @@ const rl = createInterface({
 // out here
 const cleanup = async () => {
   baseLogger.info("Cleaning up index.ts redis connection");
-  await redis.quit();
+  redis.disconnect();
   baseLogger.info("Closing file descriptors");
   rl.close();
   baseLogger.info("Graceful Shutdown: Goodbye");
@@ -80,3 +80,7 @@ for await (const line of rl) {
     console.log(res);
   }
 }
+
+void Bun.sleep(5000).then(() => {
+  console.log(process.getActiveResourcesInfo());
+});
