@@ -1,4 +1,4 @@
-import type { DisposableRedis } from "@/lib/redis-registry";
+import type { DisposableRedis } from "@/types/redis";
 import { os } from "@orpc/server";
 import type { Logger } from "pino";
 
@@ -20,8 +20,7 @@ export const vmRoute = o.use(timingMiddleware);
 export const publicRoute = o.use(timingMiddleware);
 
 export type ServerCtx = {
-  redis: DisposableRedis;
-  redisKey: string;
   serverLogger: Logger;
   openedAt: number;
+  redis: DisposableRedis;
 };

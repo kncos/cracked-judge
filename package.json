@@ -26,6 +26,7 @@
     "@hono/standard-validator": "^0.2.2",
     "@orpc/client": "^1.13.6",
     "@orpc/server": "^1.13.6",
+    "generic-pool": "^3.9.0",
     "hono": "^4.12.8",
     "ioredis": "^5.10.0",
     "msgpackr": "^1.11.9",

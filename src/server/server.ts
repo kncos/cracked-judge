@@ -1,4 +1,3 @@
-import { RedisRegistry } from "@/lib/redis-registry";
 import { tryCatch } from "@/lib/utils";
 import { onError } from "@orpc/server";
 import { RPCHandler as RPCHandlerWs } from "@orpc/server/bun-ws";
@@ -9,16 +8,19 @@ import { judge } from "./api/judge";
 import { vm } from "./api/vm";
 import type { ServerCtx } from "./orpc";
 
+const fetch: Parameters<typeof Bun.serve>[0]["fetch"] = (req, server) => {
+  // vm path (websockets)
+  // public path (judge api)
+};
+
 export class VmServer implements AsyncDisposable {
   private static port: number = 3000;
   private constructor(
     private readonly server: Bun.Server<ServerCtx>,
-    private readonly redisRegistry: RedisRegistry,
     private readonly serverLogger: Logger,
   ) {}
 
   static create = (name: string = "Server") => {
-    const registry = new RedisRegistry();
     const serverLogger = baseLogger.child({}, { msgPrefix: `[${name}] ` });
     const vmHandler = new RPCHandlerWs<ServerCtx>(vm, {
       interceptors: [
@@ -39,24 +41,11 @@ export class VmServer implements AsyncDisposable {
 
     const server: Bun.Server<ServerCtx> = Bun.serve({
       port: VmServer.port,
+      // eslint-disable-next-line @typescript-eslint/require-await
       async fetch(req, server) {
-        const { data: redisKey, error } = await tryCatch(registry.allocate());
-        if (error) {
-          const msg = `Upgrade failed: Redis connection could not be allocated.`;
-          serverLogger.error({ redisKey, errorMsg: error.message }, msg);
-          return new Response(msg, { status: 500 });
-        }
-
-        const redis = registry.get(redisKey);
-        if (redis === undefined) {
-          const msg = `Redis connection not found for key: ${redisKey}`;
-          serverLogger.error({ redisKey }, msg);
-          return new Response(msg, { status: 500 });
-        }
-
         if (
           server.upgrade(req, {
-            data: { redisKey, redis, serverLogger, openedAt: Date.now() },
+            data: { serverLogger, openedAt: Date.now() },
           })
         ) {
           return;
