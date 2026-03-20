@@ -1,29 +1,27 @@
 import * as z from "zod";
 import { vmRoute } from "../orpc";
-import { zJobResolved, zJobResult, zJobStatus } from "../schemas";
-import { consumeJob, submitJobResult, submitJobStatus } from "../typed-redis";
+import { zJob, zJobResult, zJobStatus } from "../schemas";
 
 export const vm = {
-  requestJob: vmRoute
-    .output(zJobResolved.nullable())
-    .handler(async ({ context }) => {
-      const { redis } = context;
-      if (!redis || redis.status !== "ready") {
-        context.serverLogger.error("NO REDIS?");
-      }
+  requestJob: vmRoute.output(zJob.nullable()).handler(async ({ context }) => {
+    const { redisManager } = context;
+    const data = await redisManager.consumeJob(0);
+    if (data === null) return null;
 
-      const data = await consumeJob(redis, 0);
-      return data;
-    }),
+    return {
+      ...data,
+      file: new File([data.file], "hello"),
+    };
+  }),
   submitJobStatus: vmRoute
     .input(zJobStatus)
     .handler(async ({ input, context }) => {
+      const { redisManager } = context;
       if (input.status === "completed" || input.status === "timed-out") {
         throw new Error("do not send these (todo: add better type)");
       }
 
-      const { redis } = context;
-      await submitJobStatus(redis, input);
+      await redisManager.submitJobStatus(input);
     }),
   submitJobResult: vmRoute
     .input(zJobResult)
@@ -33,8 +31,16 @@ export const vm = {
       }),
     )
     .handler(async ({ input, context }) => {
-      const { redis } = context;
-      await submitJobResult(redis, input);
+      const { redisManager, serverLogger } = context;
+      await redisManager.submitJobResult(input);
+      // submit completed status to pub/sub stream
+      await redisManager.submitJobStatus({
+        status: "completed",
+        type: "status",
+        id: input.id,
+      });
+
+      serverLogger.info(input, "Received a job result");
 
       return {
         action: "continue",

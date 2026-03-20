@@ -80,5 +80,3 @@ for await (const line of rl) {
     console.log(res);
   }
 }
-
-// process.on("SIGINT", cleanup);

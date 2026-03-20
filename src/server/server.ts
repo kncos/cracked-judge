@@ -1,5 +1,4 @@
 import { baseLogger } from "@/lib/logger";
-import { createRedisPool, type RedisPool } from "@/lib/redis-pool";
 import { onError } from "@orpc/client";
 import { RPCHandler as RPCHandlerWs } from "@orpc/server/bun-ws";
 import { RPCHandler } from "@orpc/server/fetch";
@@ -7,6 +6,7 @@ import type { Logger } from "pino";
 import { judge } from "./api/judge";
 import { vm } from "./api/vm";
 import { type BaseCtx, type WebsocketCtx } from "./orpc";
+import { RedisManager } from "./typed-redis";
 
 const serverLogger = baseLogger.child({}, { msgPrefix: "[server] " });
 const createHandlers = () => {
@@ -43,31 +43,29 @@ export class Server implements AsyncDisposable {
   private constructor(
     private readonly server: Bun.Server<WebsocketCtx>,
     private readonly serverLogger: Logger,
-    private readonly redisPool: RedisPool,
+    private readonly redisManager: RedisManager,
   ) {}
 
   static create = async () => {
     // handlers
     const { workerHandler, publicHandler } = createHandlers();
     // redisPool, serverLogger
-    const redisPool = await createRedisPool();
+    const redisManager = await RedisManager.create();
 
     const server: Bun.Server<WebsocketCtx> = Bun.serve({
       port: Server.port,
       async fetch(req, server) {
-        const context = { serverLogger, redisPool };
+        const context = { serverLogger, redisManager };
         // public routes
         const pub = await publicHandler.handle(req, { context });
         if (pub.matched) return pub.response;
 
         // upgrade to websocket
-        const redis = await redisPool.acquire();
         const isUpgraded = server.upgrade(req, {
-          data: { ...context, openedAt: Date.now(), redis },
+          data: { ...context, openedAt: Date.now() },
         });
         if (!isUpgraded) {
           serverLogger.error("WS upgrade failed");
-          await redisPool.release(redis);
           return new Response("Invalid WebSocket request", { status: 500 });
         } else {
           serverLogger.info("WS upgrade succeeded");
@@ -75,14 +73,6 @@ export class Server implements AsyncDisposable {
       },
       websocket: {
         async message(ws, message) {
-          if (Buffer.isBuffer(message)) {
-            const msgStr = message.toString().slice(0, 128);
-            serverLogger.debug({ msgStr }, "Got a message");
-          } else if (typeof message === "string") {
-            const msgStr = message.slice(0, 128);
-            serverLogger.debug({ msgStr }, "Got a message");
-          }
-
           await workerHandler.message(ws, message, {
             context: {
               ...ws.data,
@@ -92,26 +82,26 @@ export class Server implements AsyncDisposable {
         open() {
           serverLogger.debug("Websocket connection opened");
         },
-        async close(ws, code, reason) {
-          await redisPool.release(ws.data.redis);
+        close(ws, code, reason) {
           const closedAt = Date.now();
           const connTimeMs = closedAt - ws.data.openedAt;
           serverLogger.debug(
             { code, reason },
             `Websocket closed after ${String(connTimeMs)}ms`,
           );
-          // workerHandler.close(ws);
+          // is this necessary
+          workerHandler.close(ws);
         },
       },
     });
 
-    return new Server(server, serverLogger, redisPool);
+    return new Server(server, serverLogger, redisManager);
   };
 
   destroy = async () => {
     try {
       await this.server.stop(true);
-      await this.redisPool.drain().then(() => this.redisPool.clear());
+      await this.redisManager.destoy();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "N/A";
       this.serverLogger.error({ msg }, "Error destroying server instance");

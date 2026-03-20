@@ -1,8 +1,3 @@
-import {
-  enqueueJob,
-  fetchJobResult,
-  JobStatusConsumer,
-} from "@/server/typed-redis";
 import { eventIterator } from "@orpc/server";
 import { publicRoute } from "../orpc";
 import { zJob, zJobStatusOrResult } from "../schemas";
@@ -12,20 +7,17 @@ export const judge = {
     .input(zJob)
     .output(eventIterator(zJobStatusOrResult))
     .handler(async function* ({ input, context }) {
-      const { redisPool, serverLogger } = context;
+      const { redisManager, serverLogger } = context;
 
-      await enqueueJob(redis, input);
+      await redisManager.enqueueJob(input);
 
-      await using consumer = await JobStatusConsumer.create(
-        redis,
-        input.id,
-        10000,
-      );
       try {
-        for await (const status of consumer) {
+        for await (const status of redisManager.jobStatusIterator(
+          input.id,
+          10000,
+        )) {
           if (status.status === "completed") {
-            await consumer.destroy();
-            const result = await fetchJobResult(redis, input.id);
+            const result = await redisManager.fetchJobResult(input.id);
             if (result === null) {
               throw new Error("failed to get job?");
             }
@@ -33,8 +25,7 @@ export const judge = {
             yield result;
             return;
           } else if (status.status === "timed-out") {
-            await consumer.destroy();
-            const result = await fetchJobResult(redis, input.id);
+            const result = await redisManager.fetchJobResult(input.id);
             if (result === null) {
               yield status;
             } else {

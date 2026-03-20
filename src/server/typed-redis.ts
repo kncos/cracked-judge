@@ -96,9 +96,10 @@ export async function enqueueJob(
   const fileKey = keys.jobFile(input.id);
   try {
     const { file, ...rest } = input;
-    await redis.lpush(JOB_QUEUE, input.id);
     await redis.hset(jobKey, rest);
     await redis.set(fileKey, file);
+    //! note: this comes last because if not, its a race condition!
+    await redis.lpush(JOB_QUEUE, input.id);
     redisLogger.info(
       {
         JOB_QUEUE,
@@ -341,6 +342,48 @@ export class RedisManager {
       await this.redisPool.destroy(redis);
     }
   };
+
+  async *jobStatusIterator(
+    jobId: string,
+    timeout?: number,
+  ): AsyncGenerator<z.infer<typeof zJobStatus>> {
+    const redis = await this.redisPool.acquire();
+    let timer: NodeJS.Timeout | null = null;
+    const key = keys.result(jobId);
+    const ac = new AbortController();
+
+    const cleanup = async () => {
+      if (timer) clearTimeout(timer);
+      ac.abort();
+      await Promise.allSettled([redis.unsubscribe(key)]);
+      await this.redisPool.destroy(redis);
+    };
+
+    try {
+      await redis.subscribe(key);
+      if (timeout) {
+        timer = setTimeout(() => void cleanup(), timeout);
+      }
+
+      const messages = on(redis, "message", { signal: ac.signal });
+      try {
+        for await (const [channel, message] of messages) {
+          if (channel !== key) {
+            continue;
+          }
+          const status = zJobStatus.parse(JSON.parse(message as string));
+          yield status;
+        }
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          return handleError("jobStatusIterator", error, { key });
+        }
+        yield { status: "timed-out", id: jobId, type: "status" };
+      }
+    } finally {
+      await cleanup();
+    }
+  }
 
   async [Symbol.asyncDispose]() {
     await this.destoy();

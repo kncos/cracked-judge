@@ -14356,7 +14356,7 @@ var require_errors2 = __commonJS((exports, module) => {
 // node_modules/generic-pool/lib/ResourceRequest.js
 var require_ResourceRequest = __commonJS((exports, module) => {
   var Deferred = require_Deferred();
-  var errors = require_errors2();
+  var errors3 = require_errors2();
   function fbind(fn, ctx) {
     return function bound() {
       return fn.apply(ctx, arguments);
@@ -14393,7 +14393,7 @@ var require_ResourceRequest = __commonJS((exports, module) => {
       this._timeout = null;
     }
     _fireTimeout() {
-      this.reject(new errors.TimeoutError("ResourceRequest timed out"));
+      this.reject(new errors3.TimeoutError("ResourceRequest timed out"));
     }
     reject(reason) {
       this.removeTimeout();
@@ -14475,12 +14475,12 @@ var require_PooledResource = __commonJS((exports, module) => {
 // node_modules/generic-pool/lib/DefaultEvictor.js
 var require_DefaultEvictor = __commonJS((exports, module) => {
   class DefaultEvictor {
-    evict(config, pooledResource, availableObjectsCount) {
+    evict(config2, pooledResource, availableObjectsCount) {
       const idleTime = Date.now() - pooledResource.lastIdleTime;
-      if (config.softIdleTimeoutMillis > 0 && config.softIdleTimeoutMillis < idleTime && config.min < availableObjectsCount) {
+      if (config2.softIdleTimeoutMillis > 0 && config2.softIdleTimeoutMillis < idleTime && config2.min < availableObjectsCount) {
         return true;
       }
-      if (config.idleTimeoutMillis < idleTime) {
+      if (config2.idleTimeoutMillis < idleTime) {
         return true;
       }
       return false;
@@ -14732,11 +14732,11 @@ var require_PriorityQueue = __commonJS((exports, module) => {
       }
     }
     get length() {
-      let _length = 0;
+      let _length2 = 0;
       for (let i = 0, slots = this._slots.length;i < slots; i++) {
-        _length += this._slots[i].length;
+        _length2 += this._slots[i].length;
       }
-      return _length;
+      return _length2;
     }
     enqueue(obj, priority) {
       priority = priority && +priority | 0 || 0;
@@ -14778,8 +14778,8 @@ var require_PriorityQueue = __commonJS((exports, module) => {
 // node_modules/generic-pool/lib/utils.js
 var require_utils3 = __commonJS((exports) => {
   function noop() {}
-  exports.reflector = function(promise) {
-    return promise.then(noop, noop);
+  exports.reflector = function(promise2) {
+    return promise2.then(noop, noop);
   };
 });
 
@@ -14835,13 +14835,13 @@ var require_Pool = __commonJS((exports, module) => {
       });
       this._ensureMinimum();
     }
-    _applyDestroyTimeout(promise) {
+    _applyDestroyTimeout(promise2) {
       const timeoutPromise = new this._Promise((resolve, reject) => {
         setTimeout(() => {
           reject(new Error("destroy timed out"));
         }, this._config.destroyTimeoutMillis).unref();
       });
-      return this._Promise.race([timeoutPromise, promise]);
+      return this._Promise.race([timeoutPromise, promise2]);
     }
     _testOnBorrow() {
       if (this._availableObjects.length < 1) {
@@ -14908,13 +14908,13 @@ var require_Pool = __commonJS((exports, module) => {
       clientResourceRequest.resolve(pooledResource.obj);
       return true;
     }
-    _trackOperation(operation, set) {
-      set.add(operation);
+    _trackOperation(operation, set2) {
+      set2.add(operation);
       return operation.then((v) => {
-        set.delete(operation);
+        set2.delete(operation);
         return this._Promise.resolve(v);
       }, (e) => {
-        set.delete(operation);
+        set2.delete(operation);
         return this._Promise.reject(e);
       });
     }
@@ -15138,8 +15138,8 @@ var require_generic_pool = __commonJS((exports, module) => {
     Deque,
     PriorityQueue,
     DefaultEvictor,
-    createPool: function(factory, config) {
-      return new Pool(DefaultEvictor, Deque, PriorityQueue, factory, config);
+    createPool: function(factory, config2) {
+      return new Pool(DefaultEvictor, Deque, PriorityQueue, factory, config2);
     }
   };
 });
@@ -17503,60 +17503,6 @@ var judgeLink = new RPCLink({
 });
 var judgeClient = createORPCClient(judgeLink);
 
-// src/types/redis.ts
-var import_ioredis = __toESM(require_built3(), 1);
-var import_ioredis2 = __toESM(require_built3(), 1);
-var isReplyError = (error) => {
-  if (error === null || error === undefined || typeof error !== "object")
-    return false;
-  if ("name" in error && error.name === "ReplyError")
-    return true;
-  if (error instanceof import_ioredis2.ReplyError)
-    return true;
-  return false;
-};
-
-class DisposableRedis extends import_ioredis2.default {
-  async[Symbol.asyncDispose]() {
-    if (this.status === "end") {
-      return;
-    }
-    const { error } = await tryCatch(Promise.race([
-      Bun.sleep(3000).then(() => {
-        this.disconnect();
-      }),
-      this.quit()
-    ]));
-    if (error) {
-      baseLogger.warn({ errorMsg: error.message }, "Exception while cleaning up redis in async dispose");
-    }
-  }
-}
-
-// src/lib/redis-pool.ts
-var import_generic_pool = __toESM(require_generic_pool(), 1);
-var redisPoolFactory = {
-  create: async function() {
-    const client = new DisposableRedis;
-    await new Promise((res, rej) => {
-      client.once("ready", res);
-      client.once("error", rej);
-    });
-    return client;
-  },
-  validate: async function(client) {
-    return Promise.resolve(client.status === "ready");
-  },
-  destroy: async function(client) {
-    await client[Symbol.asyncDispose]();
-  }
-};
-var createRedisPool = async () => {
-  const pool = import_generic_pool.default.createPool(redisPoolFactory, { min: 2, max: 128 });
-  await pool.ready();
-  return pool;
-};
-
 // node_modules/@orpc/contract/dist/shared/contract.D_dZrO__.mjs
 class ValidationError extends Error {
   issues;
@@ -18414,6 +18360,240 @@ class RPCHandler2 extends FetchHandler {
     super(new StandardRPCHandler(router, options), options);
   }
 }
+// node_modules/@orpc/server/dist/index.mjs
+var DEFAULT_CONFIG2 = {
+  initialInputValidationIndex: 0,
+  initialOutputValidationIndex: 0,
+  dedupeLeadingMiddlewares: true
+};
+function fallbackConfig(key, value2) {
+  if (value2 === undefined) {
+    return DEFAULT_CONFIG2[key];
+  }
+  return value2;
+}
+function decorateMiddleware(middleware) {
+  const decorated = (...args) => middleware(...args);
+  decorated.mapInput = (mapInput) => {
+    const mapped = decorateMiddleware((options, input, ...rest) => middleware(options, mapInput(input), ...rest));
+    return mapped;
+  };
+  decorated.concat = (concatMiddleware, mapInput) => {
+    const mapped = mapInput ? decorateMiddleware(concatMiddleware).mapInput(mapInput) : concatMiddleware;
+    const concatted = decorateMiddleware((options, input, output, ...rest) => {
+      const merged = middleware({
+        ...options,
+        next: (...[nextOptions1]) => mapped({
+          ...options,
+          context: { ...options.context, ...nextOptions1?.context },
+          next: (...[nextOptions2]) => options.next({ context: { ...nextOptions1?.context, ...nextOptions2?.context } })
+        }, input, output, ...rest)
+      }, input, output, ...rest);
+      return merged;
+    });
+    return concatted;
+  };
+  return decorated;
+}
+function createActionableClient(client) {
+  const action = async (input) => {
+    try {
+      return [null, await client(input)];
+    } catch (error) {
+      if (error instanceof Error && "digest" in error && typeof error.digest === "string" && error.digest.startsWith("NEXT_")) {
+        throw error;
+      }
+      if (error instanceof Response && "options" in error && isObject(error.options) || isObject(error) && error.isNotFound === true) {
+        throw error;
+      }
+      return [toORPCError(error).toJSON(), undefined];
+    }
+  };
+  return action;
+}
+
+class DecoratedProcedure extends Procedure {
+  errors(errors) {
+    return new DecoratedProcedure({
+      ...this["~orpc"],
+      errorMap: mergeErrorMap(this["~orpc"].errorMap, errors)
+    });
+  }
+  meta(meta) {
+    return new DecoratedProcedure({
+      ...this["~orpc"],
+      meta: mergeMeta(this["~orpc"].meta, meta)
+    });
+  }
+  route(route) {
+    return new DecoratedProcedure({
+      ...this["~orpc"],
+      route: mergeRoute(this["~orpc"].route, route)
+    });
+  }
+  use(middleware, mapInput) {
+    const mapped = mapInput ? decorateMiddleware(middleware).mapInput(mapInput) : middleware;
+    return new DecoratedProcedure({
+      ...this["~orpc"],
+      middlewares: addMiddleware(this["~orpc"].middlewares, mapped)
+    });
+  }
+  callable(...rest) {
+    const client = createProcedureClient(this, ...rest);
+    return new Proxy(client, {
+      get: (target, key) => {
+        return Reflect.has(this, key) ? Reflect.get(this, key) : Reflect.get(target, key);
+      },
+      has: (target, key) => {
+        return Reflect.has(this, key) || Reflect.has(target, key);
+      }
+    });
+  }
+  actionable(...rest) {
+    const action = createActionableClient(createProcedureClient(this, ...rest));
+    return new Proxy(action, {
+      get: (target, key) => {
+        return Reflect.has(this, key) ? Reflect.get(this, key) : Reflect.get(target, key);
+      },
+      has: (target, key) => {
+        return Reflect.has(this, key) || Reflect.has(target, key);
+      }
+    });
+  }
+}
+
+class Builder {
+  "~orpc";
+  constructor(def) {
+    this["~orpc"] = def;
+  }
+  $config(config) {
+    const inputValidationCount = this["~orpc"].inputValidationIndex - fallbackConfig("initialInputValidationIndex", this["~orpc"].config.initialInputValidationIndex);
+    const outputValidationCount = this["~orpc"].outputValidationIndex - fallbackConfig("initialOutputValidationIndex", this["~orpc"].config.initialOutputValidationIndex);
+    return new Builder({
+      ...this["~orpc"],
+      config,
+      dedupeLeadingMiddlewares: fallbackConfig("dedupeLeadingMiddlewares", config.dedupeLeadingMiddlewares),
+      inputValidationIndex: fallbackConfig("initialInputValidationIndex", config.initialInputValidationIndex) + inputValidationCount,
+      outputValidationIndex: fallbackConfig("initialOutputValidationIndex", config.initialOutputValidationIndex) + outputValidationCount
+    });
+  }
+  $context() {
+    return new Builder({
+      ...this["~orpc"],
+      middlewares: [],
+      inputValidationIndex: fallbackConfig("initialInputValidationIndex", this["~orpc"].config.initialInputValidationIndex),
+      outputValidationIndex: fallbackConfig("initialOutputValidationIndex", this["~orpc"].config.initialOutputValidationIndex)
+    });
+  }
+  $meta(initialMeta) {
+    return new Builder({
+      ...this["~orpc"],
+      meta: initialMeta
+    });
+  }
+  $route(initialRoute) {
+    return new Builder({
+      ...this["~orpc"],
+      route: initialRoute
+    });
+  }
+  $input(initialInputSchema) {
+    return new Builder({
+      ...this["~orpc"],
+      inputSchema: initialInputSchema
+    });
+  }
+  middleware(middleware) {
+    return decorateMiddleware(middleware);
+  }
+  errors(errors) {
+    return new Builder({
+      ...this["~orpc"],
+      errorMap: mergeErrorMap(this["~orpc"].errorMap, errors)
+    });
+  }
+  use(middleware, mapInput) {
+    const mapped = mapInput ? decorateMiddleware(middleware).mapInput(mapInput) : middleware;
+    return new Builder({
+      ...this["~orpc"],
+      middlewares: addMiddleware(this["~orpc"].middlewares, mapped)
+    });
+  }
+  meta(meta) {
+    return new Builder({
+      ...this["~orpc"],
+      meta: mergeMeta(this["~orpc"].meta, meta)
+    });
+  }
+  route(route) {
+    return new Builder({
+      ...this["~orpc"],
+      route: mergeRoute(this["~orpc"].route, route)
+    });
+  }
+  input(schema) {
+    return new Builder({
+      ...this["~orpc"],
+      inputSchema: schema,
+      inputValidationIndex: fallbackConfig("initialInputValidationIndex", this["~orpc"].config.initialInputValidationIndex) + this["~orpc"].middlewares.length
+    });
+  }
+  output(schema) {
+    return new Builder({
+      ...this["~orpc"],
+      outputSchema: schema,
+      outputValidationIndex: fallbackConfig("initialOutputValidationIndex", this["~orpc"].config.initialOutputValidationIndex) + this["~orpc"].middlewares.length
+    });
+  }
+  handler(handler) {
+    return new DecoratedProcedure({
+      ...this["~orpc"],
+      handler
+    });
+  }
+  prefix(prefix) {
+    return new Builder({
+      ...this["~orpc"],
+      prefix: mergePrefix(this["~orpc"].prefix, prefix)
+    });
+  }
+  tag(...tags) {
+    return new Builder({
+      ...this["~orpc"],
+      tags: mergeTags(this["~orpc"].tags, tags)
+    });
+  }
+  router(router) {
+    return enhanceRouter(router, this["~orpc"]);
+  }
+  lazy(loader) {
+    return enhanceRouter(lazy(loader), this["~orpc"]);
+  }
+}
+var os2 = new Builder({
+  config: {},
+  route: {},
+  meta: {},
+  errorMap: {},
+  inputValidationIndex: fallbackConfig("initialInputValidationIndex"),
+  outputValidationIndex: fallbackConfig("initialOutputValidationIndex"),
+  middlewares: [],
+  dedupeLeadingMiddlewares: true
+});
+
+// src/server/orpc.ts
+var o = os2.$context();
+var timingMiddleware = o.middleware(async ({ next, context, path }) => {
+  const { serverLogger } = context;
+  const start = Date.now();
+  const result = await next();
+  const end = Date.now();
+  serverLogger.trace(`${path.join("/")}: time elapsed ${String(end - start)}ms`);
+  return result;
+});
+var vmRoute = o.$context().use(timingMiddleware);
+var publicRoute = o.$context().use(timingMiddleware);
 
 // node_modules/zod/v4/classic/external.js
 var exports_external = {};
@@ -19226,10 +19406,10 @@ var allowsEval = cached(() => {
     return false;
   }
 });
-function isPlainObject(o) {
-  if (isObject2(o) === false)
+function isPlainObject(o2) {
+  if (isObject2(o2) === false)
     return false;
-  const ctor = o.constructor;
+  const ctor = o2.constructor;
   if (ctor === undefined)
     return true;
   if (typeof ctor !== "function")
@@ -19242,12 +19422,12 @@ function isPlainObject(o) {
   }
   return true;
 }
-function shallowClone(o) {
-  if (isPlainObject(o))
-    return { ...o };
-  if (Array.isArray(o))
-    return [...o];
-  return o;
+function shallowClone(o2) {
+  if (isPlainObject(o2))
+    return { ...o2 };
+  if (Array.isArray(o2))
+    return [...o2];
+  return o2;
 }
 function numKeys(data) {
   let keyCount = 0;
@@ -21543,17 +21723,17 @@ function handleUnionResults(results, final, inst, ctx) {
 }
 var $ZodUnion = /* @__PURE__ */ $constructor("$ZodUnion", (inst, def) => {
   $ZodType.init(inst, def);
-  defineLazy(inst._zod, "optin", () => def.options.some((o) => o._zod.optin === "optional") ? "optional" : undefined);
-  defineLazy(inst._zod, "optout", () => def.options.some((o) => o._zod.optout === "optional") ? "optional" : undefined);
+  defineLazy(inst._zod, "optin", () => def.options.some((o2) => o2._zod.optin === "optional") ? "optional" : undefined);
+  defineLazy(inst._zod, "optout", () => def.options.some((o2) => o2._zod.optout === "optional") ? "optional" : undefined);
   defineLazy(inst._zod, "values", () => {
-    if (def.options.every((o) => o._zod.values)) {
+    if (def.options.every((o2) => o2._zod.values)) {
       return new Set(def.options.flatMap((option) => Array.from(option._zod.values)));
     }
     return;
   });
   defineLazy(inst._zod, "pattern", () => {
-    if (def.options.every((o) => o._zod.pattern)) {
-      const patterns = def.options.map((o) => o._zod.pattern);
+    if (def.options.every((o2) => o2._zod.pattern)) {
+      const patterns = def.options.map((o2) => o2._zod.pattern);
       return new RegExp(`^(${patterns.map((p) => cleanRegex(p.source)).join("|")})$`);
     }
     return;
@@ -21664,15 +21844,15 @@ var $ZodDiscriminatedUnion = /* @__PURE__ */ $constructor("$ZodDiscriminatedUnio
   const disc = cached(() => {
     const opts = def.options;
     const map = new Map;
-    for (const o of opts) {
-      const values = o._zod.propValues?.[def.discriminator];
+    for (const o2 of opts) {
+      const values = o2._zod.propValues?.[def.discriminator];
       if (!values || values.size === 0)
-        throw new Error(`Invalid discriminated union option at index "${def.options.indexOf(o)}"`);
+        throw new Error(`Invalid discriminated union option at index "${def.options.indexOf(o2)}"`);
       for (const v of values) {
         if (map.has(v)) {
           throw new Error(`Duplicate discriminator value "${String(v)}"`);
         }
-        map.set(v, o);
+        map.set(v, o2);
       }
     }
     return map;
@@ -22086,7 +22266,7 @@ var $ZodEnum = /* @__PURE__ */ $constructor("$ZodEnum", (inst, def) => {
   const values = getEnumValues(def.entries);
   const valuesSet = new Set(values);
   inst._zod.values = valuesSet;
-  inst._zod.pattern = new RegExp(`^(${values.filter((k) => propertyKeyTypes.has(typeof k)).map((o) => typeof o === "string" ? escapeRegex(o) : o.toString()).join("|")})$`);
+  inst._zod.pattern = new RegExp(`^(${values.filter((k) => propertyKeyTypes.has(typeof k)).map((o2) => typeof o2 === "string" ? escapeRegex(o2) : o2.toString()).join("|")})$`);
   inst._zod.parse = (payload, _ctx) => {
     const input = payload.value;
     if (valuesSet.has(input)) {
@@ -22108,7 +22288,7 @@ var $ZodLiteral = /* @__PURE__ */ $constructor("$ZodLiteral", (inst, def) => {
   }
   const values = new Set(def.values);
   inst._zod.values = values;
-  inst._zod.pattern = new RegExp(`^(${def.values.map((o) => typeof o === "string" ? escapeRegex(o) : o ? escapeRegex(o.toString()) : String(o)).join("|")})$`);
+  inst._zod.pattern = new RegExp(`^(${def.values.map((o2) => typeof o2 === "string" ? escapeRegex(o2) : o2 ? escapeRegex(o2.toString()) : String(o2)).join("|")})$`);
   inst._zod.parse = (payload, _ctx) => {
     const input = payload.value;
     if (values.has(input)) {
@@ -31617,9 +31797,9 @@ function convertBaseSchema(schema, ctx) {
   if (schema.const !== undefined) {
     return z.literal(schema.const);
   }
-  const type = schema.type;
-  if (Array.isArray(type)) {
-    const typeSchemas = type.map((t) => {
+  const type2 = schema.type;
+  if (Array.isArray(type2)) {
+    const typeSchemas = type2.map((t) => {
       const typeSchema = { ...schema, type: t };
       return convertBaseSchema(typeSchema, ctx);
     });
@@ -31631,11 +31811,11 @@ function convertBaseSchema(schema, ctx) {
     }
     return z.union(typeSchemas);
   }
-  if (!type) {
+  if (!type2) {
     return z.any();
   }
   let zodSchema;
-  switch (type) {
+  switch (type2) {
     case "string": {
       let stringSchema = z.string();
       if (schema.format) {
@@ -31702,7 +31882,7 @@ function convertBaseSchema(schema, ctx) {
     }
     case "number":
     case "integer": {
-      let numberSchema = type === "integer" ? z.number().int() : z.number();
+      let numberSchema = type2 === "integer" ? z.number().int() : z.number();
       if (typeof schema.minimum === "number") {
         numberSchema = numberSchema.min(schema.minimum);
       }
@@ -31837,7 +32017,7 @@ function convertBaseSchema(schema, ctx) {
       break;
     }
     default:
-      throw new Error(`Unsupported type: ${type}`);
+      throw new Error(`Unsupported type: ${type2}`);
   }
   if (schema.description) {
     zodSchema = zodSchema.describe(schema.description);
@@ -31995,6 +32175,135 @@ var zJobStatusOrResult = zod_default.discriminatedUnion("type", [
   zJobStatus
 ]);
 
+// src/server/api/judge.ts
+var judge = {
+  submit: publicRoute.input(zJob).output(eventIterator(zJobStatusOrResult)).handler(async function* ({ input, context }) {
+    const { redisManager, serverLogger } = context;
+    await redisManager.enqueueJob(input);
+    try {
+      for await (const status of redisManager.jobStatusIterator(input.id, 1e4)) {
+        if (status.status === "completed") {
+          const result = await redisManager.fetchJobResult(input.id);
+          if (result === null) {
+            throw new Error("failed to get job?");
+          }
+          yield status;
+          yield result;
+          return;
+        } else if (status.status === "timed-out") {
+          const result = await redisManager.fetchJobResult(input.id);
+          if (result === null) {
+            yield status;
+          } else {
+            yield result;
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      serverLogger.error({ e }, "Encountered error in the consumer loop");
+    }
+    yield { status: "timed-out", type: "status", id: input.id };
+    return;
+  })
+};
+
+// src/server/api/vm.ts
+var vm = {
+  requestJob: vmRoute.output(zJob.nullable()).handler(async ({ context }) => {
+    const { redisManager } = context;
+    const data = await redisManager.consumeJob(0);
+    if (data === null)
+      return null;
+    return {
+      ...data,
+      file: new File([data.file], "hello")
+    };
+  }),
+  submitJobStatus: vmRoute.input(zJobStatus).handler(async ({ input, context }) => {
+    const { redisManager } = context;
+    if (input.status === "completed" || input.status === "timed-out") {
+      throw new Error("do not send these (todo: add better type)");
+    }
+    await redisManager.submitJobStatus(input);
+  }),
+  submitJobResult: vmRoute.input(zJobResult).output(object({
+    action: _enum2(["continue", "die"])
+  })).handler(async ({ input, context }) => {
+    const { redisManager, serverLogger } = context;
+    await redisManager.submitJobResult(input);
+    await redisManager.submitJobStatus({
+      status: "completed",
+      type: "status",
+      id: input.id
+    });
+    serverLogger.info(input, "Received a job result");
+    return {
+      action: "continue"
+    };
+  })
+};
+
+// src/types/redis.ts
+var import_ioredis = __toESM(require_built3(), 1);
+var import_ioredis2 = __toESM(require_built3(), 1);
+var isReplyError = (error48) => {
+  if (error48 === null || error48 === undefined || typeof error48 !== "object")
+    return false;
+  if ("name" in error48 && error48.name === "ReplyError")
+    return true;
+  if (error48 instanceof import_ioredis2.ReplyError)
+    return true;
+  return false;
+};
+
+class DisposableRedis extends import_ioredis2.default {
+  async[Symbol.asyncDispose]() {
+    if (this.status === "end") {
+      return;
+    }
+    const { error: error48 } = await tryCatch(Promise.race([
+      Bun.sleep(3000).then(() => {
+        this.disconnect();
+      }),
+      this.quit()
+    ]));
+    if (error48) {
+      baseLogger.warn({ errorMsg: error48.message }, "Exception while cleaning up redis in async dispose");
+    }
+  }
+}
+
+// src/lib/redis-pool.ts
+var import_generic_pool = __toESM(require_generic_pool(), 1);
+var poolLogger = baseLogger.child({}, { msgPrefix: "[REDIS POOL] " });
+var redisPoolFactory = {
+  create: async function() {
+    const client = new DisposableRedis;
+    await new Promise((res, rej) => {
+      client.once("ready", res);
+      client.once("error", rej);
+    });
+    return client;
+  },
+  validate: async function(client) {
+    const ready = await Promise.resolve(client.status === "ready");
+    const subscriber = client.condition?.subscriber;
+    if (client.condition?.subscriber !== false) {
+      poolLogger.fatal({ subscriber }, "CLIENT IS SUBSCRIBED?");
+    }
+    return ready;
+  },
+  destroy: async function(client) {
+    await client[Symbol.asyncDispose]();
+  }
+};
+var createRedisPool = async () => {
+  const pool = import_generic_pool.default.createPool(redisPoolFactory, { min: 2, max: 128 });
+  await pool.ready();
+  return pool;
+};
+
 // src/server/typed-redis.ts
 import { on } from "events";
 var JOB_QUEUE = "jobs";
@@ -32066,9 +32375,10 @@ async function enqueueJob(redis, input) {
   const fileKey = keys.jobFile(input.id);
   try {
     const { file: file2, ...rest } = input;
-    await redis.lpush(JOB_QUEUE, input.id);
     await redis.hset(jobKey, rest);
     await redis.set(fileKey, file2);
+    //! note: this comes last because if not, its a race condition!
+    await redis.lpush(JOB_QUEUE, input.id);
     redisLogger.info({
       JOB_QUEUE,
       jobKey,
@@ -32133,6 +32443,7 @@ async function submitJobStatus(redis, input) {
 }
 
 class JobStatusConsumer {
+  redisPool;
   redis;
   jobId;
   channelKey;
@@ -32140,15 +32451,17 @@ class JobStatusConsumer {
   #ac = new AbortController;
   #destroyed = false;
   #timer = null;
-  constructor(redis, jobId, channelKey, timeout) {
+  constructor(redisPool, redis, jobId, channelKey, timeout) {
+    this.redisPool = redisPool;
     this.redis = redis;
     this.jobId = jobId;
     this.channelKey = channelKey;
     this.timeout = timeout;
   }
-  static async create(redis, id, timeout) {
+  static async create(redisPool, id, timeout) {
     const channelKey = keys.result(id);
-    const consumer = new JobStatusConsumer(redis, id, channelKey, timeout);
+    const redis = await redisPool.acquire();
+    const consumer = new JobStatusConsumer(redisPool, redis, id, channelKey, timeout);
     await consumer.redis.subscribe(channelKey);
     return consumer;
   }
@@ -32162,7 +32475,11 @@ class JobStatusConsumer {
       this.#timer = null;
     }
     this.#ac.abort();
-    await Promise.allSettled([this.redis.unsubscribe(this.channelKey)]);
+    try {
+      await Promise.allSettled([this.redis.unsubscribe(this.channelKey)]);
+    } finally {
+      await this.redisPool.destroy(this.redis);
+    }
   }
   async* #iterate() {
     if (this.timeout) {
@@ -32198,317 +32515,100 @@ class JobStatusConsumer {
     await this.destroy();
   }
 }
-// node_modules/@orpc/server/dist/index.mjs
-var DEFAULT_CONFIG2 = {
-  initialInputValidationIndex: 0,
-  initialOutputValidationIndex: 0,
-  dedupeLeadingMiddlewares: true
-};
-function fallbackConfig(key, value2) {
-  if (value2 === undefined) {
-    return DEFAULT_CONFIG2[key];
+
+class RedisManager {
+  redisPool;
+  constructor(redisPool) {
+    this.redisPool = redisPool;
   }
-  return value2;
-}
-function decorateMiddleware(middleware) {
-  const decorated = (...args) => middleware(...args);
-  decorated.mapInput = (mapInput) => {
-    const mapped = decorateMiddleware((options, input, ...rest) => middleware(options, mapInput(input), ...rest));
-    return mapped;
+  static create = async () => {
+    const pool = await createRedisPool();
+    return new RedisManager(pool);
   };
-  decorated.concat = (concatMiddleware, mapInput) => {
-    const mapped = mapInput ? decorateMiddleware(concatMiddleware).mapInput(mapInput) : concatMiddleware;
-    const concatted = decorateMiddleware((options, input, output, ...rest) => {
-      const merged = middleware({
-        ...options,
-        next: (...[nextOptions1]) => mapped({
-          ...options,
-          context: { ...options.context, ...nextOptions1?.context },
-          next: (...[nextOptions2]) => options.next({ context: { ...nextOptions1?.context, ...nextOptions2?.context } })
-        }, input, output, ...rest)
-      }, input, output, ...rest);
-      return merged;
-    });
-    return concatted;
+  destoy = async () => {
+    await this.redisPool.drain();
+    await this.redisPool.clear();
   };
-  return decorated;
-}
-function createActionableClient(client) {
-  const action = async (input) => {
+  enqueueJob = async (input) => {
+    const redis = await this.redisPool.acquire();
     try {
-      return [null, await client(input)];
-    } catch (error48) {
-      if (error48 instanceof Error && "digest" in error48 && typeof error48.digest === "string" && error48.digest.startsWith("NEXT_")) {
-        throw error48;
-      }
-      if (error48 instanceof Response && "options" in error48 && isObject(error48.options) || isObject(error48) && error48.isNotFound === true) {
-        throw error48;
-      }
-      return [toORPCError(error48).toJSON(), undefined];
+      await enqueueJob(redis, input);
+    } finally {
+      await this.redisPool.destroy(redis);
     }
   };
-  return action;
-}
-
-class DecoratedProcedure extends Procedure {
-  errors(errors3) {
-    return new DecoratedProcedure({
-      ...this["~orpc"],
-      errorMap: mergeErrorMap(this["~orpc"].errorMap, errors3)
-    });
-  }
-  meta(meta3) {
-    return new DecoratedProcedure({
-      ...this["~orpc"],
-      meta: mergeMeta(this["~orpc"].meta, meta3)
-    });
-  }
-  route(route) {
-    return new DecoratedProcedure({
-      ...this["~orpc"],
-      route: mergeRoute(this["~orpc"].route, route)
-    });
-  }
-  use(middleware, mapInput) {
-    const mapped = mapInput ? decorateMiddleware(middleware).mapInput(mapInput) : middleware;
-    return new DecoratedProcedure({
-      ...this["~orpc"],
-      middlewares: addMiddleware(this["~orpc"].middlewares, mapped)
-    });
-  }
-  callable(...rest) {
-    const client = createProcedureClient(this, ...rest);
-    return new Proxy(client, {
-      get: (target, key) => {
-        return Reflect.has(this, key) ? Reflect.get(this, key) : Reflect.get(target, key);
-      },
-      has: (target, key) => {
-        return Reflect.has(this, key) || Reflect.has(target, key);
-      }
-    });
-  }
-  actionable(...rest) {
-    const action = createActionableClient(createProcedureClient(this, ...rest));
-    return new Proxy(action, {
-      get: (target, key) => {
-        return Reflect.has(this, key) ? Reflect.get(this, key) : Reflect.get(target, key);
-      },
-      has: (target, key) => {
-        return Reflect.has(this, key) || Reflect.has(target, key);
-      }
-    });
-  }
-}
-
-class Builder {
-  "~orpc";
-  constructor(def) {
-    this["~orpc"] = def;
-  }
-  $config(config2) {
-    const inputValidationCount = this["~orpc"].inputValidationIndex - fallbackConfig("initialInputValidationIndex", this["~orpc"].config.initialInputValidationIndex);
-    const outputValidationCount = this["~orpc"].outputValidationIndex - fallbackConfig("initialOutputValidationIndex", this["~orpc"].config.initialOutputValidationIndex);
-    return new Builder({
-      ...this["~orpc"],
-      config: config2,
-      dedupeLeadingMiddlewares: fallbackConfig("dedupeLeadingMiddlewares", config2.dedupeLeadingMiddlewares),
-      inputValidationIndex: fallbackConfig("initialInputValidationIndex", config2.initialInputValidationIndex) + inputValidationCount,
-      outputValidationIndex: fallbackConfig("initialOutputValidationIndex", config2.initialOutputValidationIndex) + outputValidationCount
-    });
-  }
-  $context() {
-    return new Builder({
-      ...this["~orpc"],
-      middlewares: [],
-      inputValidationIndex: fallbackConfig("initialInputValidationIndex", this["~orpc"].config.initialInputValidationIndex),
-      outputValidationIndex: fallbackConfig("initialOutputValidationIndex", this["~orpc"].config.initialOutputValidationIndex)
-    });
-  }
-  $meta(initialMeta) {
-    return new Builder({
-      ...this["~orpc"],
-      meta: initialMeta
-    });
-  }
-  $route(initialRoute) {
-    return new Builder({
-      ...this["~orpc"],
-      route: initialRoute
-    });
-  }
-  $input(initialInputSchema) {
-    return new Builder({
-      ...this["~orpc"],
-      inputSchema: initialInputSchema
-    });
-  }
-  middleware(middleware) {
-    return decorateMiddleware(middleware);
-  }
-  errors(errors3) {
-    return new Builder({
-      ...this["~orpc"],
-      errorMap: mergeErrorMap(this["~orpc"].errorMap, errors3)
-    });
-  }
-  use(middleware, mapInput) {
-    const mapped = mapInput ? decorateMiddleware(middleware).mapInput(mapInput) : middleware;
-    return new Builder({
-      ...this["~orpc"],
-      middlewares: addMiddleware(this["~orpc"].middlewares, mapped)
-    });
-  }
-  meta(meta3) {
-    return new Builder({
-      ...this["~orpc"],
-      meta: mergeMeta(this["~orpc"].meta, meta3)
-    });
-  }
-  route(route) {
-    return new Builder({
-      ...this["~orpc"],
-      route: mergeRoute(this["~orpc"].route, route)
-    });
-  }
-  input(schema) {
-    return new Builder({
-      ...this["~orpc"],
-      inputSchema: schema,
-      inputValidationIndex: fallbackConfig("initialInputValidationIndex", this["~orpc"].config.initialInputValidationIndex) + this["~orpc"].middlewares.length
-    });
-  }
-  output(schema) {
-    return new Builder({
-      ...this["~orpc"],
-      outputSchema: schema,
-      outputValidationIndex: fallbackConfig("initialOutputValidationIndex", this["~orpc"].config.initialOutputValidationIndex) + this["~orpc"].middlewares.length
-    });
-  }
-  handler(handler) {
-    return new DecoratedProcedure({
-      ...this["~orpc"],
-      handler
-    });
-  }
-  prefix(prefix) {
-    return new Builder({
-      ...this["~orpc"],
-      prefix: mergePrefix(this["~orpc"].prefix, prefix)
-    });
-  }
-  tag(...tags) {
-    return new Builder({
-      ...this["~orpc"],
-      tags: mergeTags(this["~orpc"].tags, tags)
-    });
-  }
-  router(router) {
-    return enhanceRouter(router, this["~orpc"]);
-  }
-  lazy(loader) {
-    return enhanceRouter(lazy(loader), this["~orpc"]);
-  }
-}
-var os2 = new Builder({
-  config: {},
-  route: {},
-  meta: {},
-  errorMap: {},
-  inputValidationIndex: fallbackConfig("initialInputValidationIndex"),
-  outputValidationIndex: fallbackConfig("initialOutputValidationIndex"),
-  middlewares: [],
-  dedupeLeadingMiddlewares: true
-});
-
-// src/server/orpc.ts
-var o = os2.$context();
-var timingMiddleware = o.middleware(async ({ next, context, path }) => {
-  const { serverLogger } = context;
-  const start = Date.now();
-  const result = await next();
-  const end = Date.now();
-  serverLogger.trace(`${path.join("/")}: time elapsed ${String(end - start)}ms`);
-  return result;
-});
-var httpRedisMiddleware = o.middleware(async ({ next, context, signal, path }) => {
-  const { redisPool, serverLogger } = context;
-  const redis = await redisPool.acquire();
-  if (signal) {
-    signal.addEventListener("abort", () => {
-      redisPool.release(redis);
-    });
-  } else {
-    serverLogger.warn({ path }, "No signal provided to clean up redis");
-  }
-  return await next({
-    context: {
-      ...context,
-      redis
+  consumeJob = async (timeout) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      return await consumeJob(redis, timeout);
+    } finally {
+      await this.redisPool.destroy(redis);
     }
-  });
-});
-var vmRoute = o.$context().use(timingMiddleware);
-var publicRoute = o.$context().use(timingMiddleware).use(httpRedisMiddleware);
-
-// src/server/api/judge.ts
-var judge = {
-  submit: publicRoute.input(zJob).output(eventIterator(zJobStatusOrResult)).handler(async function* ({ input, context }) {
-    const { redis } = context;
-    await enqueueJob(redis, input);
-    const consumer = await JobStatusConsumer.create(redis, input.id, 1e4);
-    for await (const status of consumer) {
-      if (status.status === "completed") {
-        await consumer.destroy();
-        const result = await fetchJobResult(redis, input.id);
-        if (result === null) {
-          throw new Error("failed to get job?");
-        }
-        yield status;
-        yield result;
-        return;
-      } else if (status.status === "timed-out") {
-        await consumer.destroy();
-        const result = await fetchJobResult(redis, input.id);
-        if (result === null) {
-          yield status;
-        } else {
-          yield result;
-        }
-        return;
-      }
+  };
+  fetchJobResult = async (jobId) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      return await fetchJobResult(redis, jobId);
+    } finally {
+      await this.redisPool.destroy(redis);
     }
-    yield { status: "timed-out", type: "status", id: input.id };
-    return;
-  })
-};
-
-// src/server/api/vm.ts
-var vm = {
-  requestJob: vmRoute.output(zJobResolved.nullable()).handler(async ({ context }) => {
-    const { redis } = context;
-    if (!redis || redis.status !== "ready") {
-      context.serverLogger.error("NO REDIS?");
+  };
+  submitJobStatus = async (input) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      await submitJobStatus(redis, input);
+    } finally {
+      await this.redisPool.destroy(redis);
     }
-    const data = await consumeJob(redis, 0);
-    return data;
-  }),
-  submitJobStatus: vmRoute.input(zJobStatus).handler(async ({ input, context }) => {
-    if (input.status === "completed" || input.status === "timed-out") {
-      throw new Error("do not send these (todo: add better type)");
+  };
+  submitJobResult = async (input) => {
+    const redis = await this.redisPool.acquire();
+    try {
+      await submitJobResult(redis, input);
+    } finally {
+      await this.redisPool.destroy(redis);
     }
-    const { redis } = context;
-    await submitJobStatus(redis, input);
-  }),
-  submitJobResult: vmRoute.input(zJobResult).output(object({
-    action: _enum2(["continue", "die"])
-  })).handler(async ({ input, context }) => {
-    const { redis } = context;
-    await submitJobResult(redis, input);
-    return {
-      action: "continue"
+  };
+  async* jobStatusIterator(jobId, timeout) {
+    const redis = await this.redisPool.acquire();
+    let timer = null;
+    const key = keys.result(jobId);
+    const ac = new AbortController;
+    const cleanup = async () => {
+      if (timer)
+        clearTimeout(timer);
+      ac.abort();
+      await Promise.allSettled([redis.unsubscribe(key)]);
+      await this.redisPool.destroy(redis);
     };
-  })
-};
+    try {
+      await redis.subscribe(key);
+      if (timeout) {
+        timer = setTimeout(() => void cleanup(), timeout);
+      }
+      const messages = on(redis, "message", { signal: ac.signal });
+      try {
+        for await (const [channel, message] of messages) {
+          if (channel !== key) {
+            continue;
+          }
+          const status = zJobStatus.parse(JSON.parse(message));
+          yield status;
+        }
+      } catch (error48) {
+        if (error48.name !== "AbortError") {
+          return handleError("jobStatusIterator", error48, { key });
+        }
+        yield { status: "timed-out", id: jobId, type: "status" };
+      }
+    } finally {
+      await cleanup();
+    }
+  }
+  async[Symbol.asyncDispose]() {
+    await this.destoy();
+  }
+}
 
 // src/server/server.ts
 var serverLogger = baseLogger.child({}, { msgPrefix: "[server] " });
@@ -32543,30 +32643,28 @@ var createHandlers = () => {
 class Server {
   server;
   serverLogger;
-  redisPool;
+  redisManager;
   static port = 3000;
-  constructor(server, serverLogger2, redisPool) {
+  constructor(server, serverLogger2, redisManager) {
     this.server = server;
     this.serverLogger = serverLogger2;
-    this.redisPool = redisPool;
+    this.redisManager = redisManager;
   }
   static create = async () => {
     const { workerHandler, publicHandler } = createHandlers();
-    const redisPool = await createRedisPool();
+    const redisManager = await RedisManager.create();
     const server = Bun.serve({
       port: Server.port,
       async fetch(req, server2) {
-        const context = { serverLogger, redisPool };
+        const context = { serverLogger, redisManager };
         const pub = await publicHandler.handle(req, { context });
         if (pub.matched)
           return pub.response;
-        const redis = await redisPool.acquire();
         const isUpgraded = server2.upgrade(req, {
-          data: { ...context, openedAt: Date.now(), redis }
+          data: { ...context, openedAt: Date.now() }
         });
         if (!isUpgraded) {
           serverLogger.error("WS upgrade failed");
-          await redisPool.release(redis);
           return new Response("Invalid WebSocket request", { status: 500 });
         } else {
           serverLogger.info("WS upgrade succeeded");
@@ -32574,13 +32672,6 @@ class Server {
       },
       websocket: {
         async message(ws, message) {
-          if (Buffer.isBuffer(message)) {
-            const msgStr = message.toString().slice(0, 128);
-            serverLogger.debug({ msgStr }, "Got a message");
-          } else if (typeof message === "string") {
-            const msgStr = message.slice(0, 128);
-            serverLogger.debug({ msgStr }, "Got a message");
-          }
           await workerHandler.message(ws, message, {
             context: {
               ...ws.data
@@ -32590,20 +32681,20 @@ class Server {
         open() {
           serverLogger.debug("Websocket connection opened");
         },
-        async close(ws, code, reason) {
-          await redisPool.release(ws.data.redis);
+        close(ws, code, reason) {
           const closedAt = Date.now();
           const connTimeMs = closedAt - ws.data.openedAt;
           serverLogger.debug({ code, reason }, `Websocket closed after ${String(connTimeMs)}ms`);
+          workerHandler.close(ws);
         }
       }
     });
-    return new Server(server, serverLogger, redisPool);
+    return new Server(server, serverLogger, redisManager);
   };
   destroy = async () => {
     try {
       await this.server.stop(true);
-      await this.redisPool.drain().then(() => this.redisPool.clear());
+      await this.redisManager.destoy();
     } catch (error48) {
       const msg = error48 instanceof Error ? error48.message : "N/A";
       this.serverLogger.error({ msg }, "Error destroying server instance");
@@ -33438,8 +33529,8 @@ class VmOrchestrator {
   };
   destroy = async () => {
     try {
-      await this.server.destroy();
       await this.resources[Symbol.asyncDispose]();
+      await this.server.destroy();
     } catch (error48) {
       if (error48 instanceof MultiAsyncDisposeError) {
         baseLogger.error(error48.cause, "Failed to dispose of VM orchestrator!");
@@ -33524,7 +33615,9 @@ try {
         continue;
       }
       for await (const val of iter) {
-        console.log(JSON.stringify(val));
+        console.log("--------");
+        console.log(JSON.stringify(val, null, 2));
+        console.log("--------");
       }
     } else if (segments[0] === "view") {
       const res = await redis.lrange("script", 0, -1);
