@@ -1,3 +1,4 @@
+import { CrackedError, handleError } from "@/lib/judge-error";
 import { eventIterator } from "@orpc/server";
 import { publicRoute } from "../orpc";
 import { zJob, zJobStatusOrResult } from "../schemas";
@@ -23,7 +24,9 @@ export const judge = {
           if (status.status === "completed") {
             const result = await redisManager.fetchJobResult(withId.id);
             if (result === null) {
-              throw new Error("failed to get job?");
+              throw new CrackedError("API_INTERNAL_ERROR", {
+                message: "No job result found after completed status received",
+              });
             }
             yield status;
             yield result;
@@ -38,8 +41,11 @@ export const judge = {
             return;
           }
         }
-      } catch {
-        serverLogger.error("Encountered error in the consumer loop");
+      } catch (e) {
+        return handleError(e, {
+          logger: serverLogger,
+          comment: "Encountered exception in judge.submit event loop",
+        });
       }
 
       yield { status: "timed-out", type: "status", id: withId.id };

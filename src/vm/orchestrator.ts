@@ -1,9 +1,13 @@
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
+import { CrackedError, handleError } from "@/lib/judge-error";
+import { baseLogger } from "@/lib/logger";
 import { Server } from "@/server/server";
 import type { VmConfig } from ".";
 import { AsyncDisposableMap } from "../lib/AsyncDisposableMap";
 import { tryCatch } from "../lib/utils";
 import { VM } from "./vm";
+
+const poolLogger = baseLogger.child({}, { msgPrefix: "[VM Pool] " });
 
 export class VmOrchestrator implements AsyncDisposable {
   private resources: AsyncDisposableMap<string, VM> = new AsyncDisposableMap();
@@ -34,13 +38,17 @@ export class VmOrchestrator implements AsyncDisposable {
     const id =
       vmId ?? `vm-${crypto.getRandomValues(new Uint8Array(4)).toHex()}`;
     if (this.resources.has(id)) {
-      throw new Error(
-        `VM with vmID: ${id} already exists! Did you mean to replace()?`,
-      );
+      throw new CrackedError("VM_POOL", {
+        message: `VM with vmID: ${id} already exists! Did you mean to replace()?`,
+      });
     }
     const { data, error } = await tryCatch(VM.create(id, this.conf));
     if (error) {
-      throw error;
+      return handleError(error, {
+        overrideCode: "VM_POOL",
+        comment: "VM creation threw in vm pool",
+        logger: poolLogger,
+      });
     }
     await this.resources.set(id, data);
     return id;
