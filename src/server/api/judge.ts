@@ -45,6 +45,9 @@ export const judge = {
         return handleError(e, {
           logger: serverLogger,
           comment: "Encountered exception in judge.submit event loop",
+          context: {
+            str: (e as Error).stack,
+          },
         });
       }
 

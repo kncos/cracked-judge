@@ -236,7 +236,7 @@ export class RedisManager {
     return new RedisManager(pool);
   };
 
-  destoy = async () => {
+  destroy = async () => {
     redisLogger.debug("Draining redis pool...");
     await this.redisPool.drain();
     redisLogger.debug("Clearing redis pool...");
@@ -302,8 +302,13 @@ export class RedisManager {
     const cleanup = async () => {
       if (timer) clearTimeout(timer);
       ac.abort();
-      await Promise.allSettled([redis.unsubscribe(key)]);
-      await this.redisPool.destroy(redis);
+      // this method can be called twice, if so, this throws
+      // without this condition
+      if (this.redisPool.isBorrowedResource(redis)) {
+        await Promise.allSettled([redis.unsubscribe(key)]);
+        // this is what throws, unsubscribe seems to be a no-op
+        await this.redisPool.destroy(redis);
+      }
     };
 
     try {
@@ -333,6 +338,6 @@ export class RedisManager {
   }
 
   async [Symbol.asyncDispose]() {
-    await this.destoy();
+    await this.destroy();
   }
 }
