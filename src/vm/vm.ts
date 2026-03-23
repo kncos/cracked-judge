@@ -3,6 +3,7 @@ import {
   createFirecrackerClient,
   type FirecrackerClient,
 } from "@/lib/firecracker-api";
+import { CrackedError } from "@/lib/judge-error";
 import { baseLogger, registerProcess } from "@/lib/logger";
 import { join } from "path";
 import type { VmConfig } from ".";
@@ -81,7 +82,10 @@ export class VM implements AsyncDisposable {
       return vm;
     } catch (e) {
       await stack.disposeAsync();
-      throw new Error(`Failed to create vm ${vmId}`, { cause: e });
+      throw new CrackedError("VM_CREATE", {
+        message: `Failed to create vm ${vmId}`,
+        cause: e,
+      });
     }
   };
 
