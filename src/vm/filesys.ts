@@ -1,5 +1,5 @@
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
-import { baseLogger } from "@/lib/logger";
+import { handleError } from "@/lib/judge-error";
 import { $ } from "bun";
 import { join } from "node:path";
 import { type VmConfig } from ".";
@@ -13,8 +13,6 @@ const bindMount = async (params: {
   const { uid, gid, hostDir, guestDir } = params;
   await $`mount --bind --map-users 0:${uid}:65534 --map-groups 0:${gid}:65534 ${hostDir} ${guestDir}`.quiet();
 };
-
-const fsLogger = baseLogger.child({}, { msgPrefix: "[Filesys] " });
 
 export class VmFilesystem implements AsyncDisposable {
   private constructor(
@@ -119,7 +117,10 @@ export class VmFilesystem implements AsyncDisposable {
       await $`mkdir -p ${vmfs.hostSocks}`.quiet();
     } catch (e) {
       await vmfs.destroy();
-      throw new Error("Failed to create dirs for mountpoints", { cause: e });
+      handleError(e, {
+        overrideCode: "VM_FILESYS",
+        comment: "Failed to create directories for mountpoints",
+      });
     }
 
     try {
@@ -136,7 +137,9 @@ export class VmFilesystem implements AsyncDisposable {
       });
     } catch (e) {
       await vmfs.destroy();
-      throw new Error("Failed to create mountpoints", { cause: e });
+      return handleError(e, {
+        comment: "Failed to create mountpoints",
+      });
     }
 
     try {
@@ -144,7 +147,10 @@ export class VmFilesystem implements AsyncDisposable {
       await $`chmod -R 777 ${vmfs.vmBase}`.quiet();
     } catch (e) {
       await vmfs.destroy();
-      throw new Error("Failed to change owner or mode of vmbase", { cause: e });
+      return handleError(e, {
+        overrideCode: "VM_FILESYS",
+        comment: "Failed to chown/chmod resources for VM",
+      });
     }
 
     return vmfs;
