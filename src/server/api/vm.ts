@@ -1,3 +1,4 @@
+import { ORPCError } from "@orpc/client";
 import * as z from "zod";
 import { vmRoute } from "../orpc";
 import { zJob, zJobResult, zJobStatus } from "../schemas";
@@ -13,7 +14,7 @@ export const vm = {
     .handler(async ({ input, context }) => {
       const { redisManager } = context;
       if (input.status === "completed" || input.status === "timed-out") {
-        throw new Error("do not send these (todo: add better type)");
+        throw new ORPCError("BAD_REQUEST", { message: "Do not send these" });
       }
 
       await redisManager.submitJobStatus(input);

@@ -1,3 +1,4 @@
+import { handleError } from "@/lib/judge-error";
 import { createRedisPool, type RedisPool } from "@/lib/redis-pool";
 import {
   deserializeJob,
@@ -8,84 +9,27 @@ import {
   zJobResult,
   zJobStatus,
 } from "@/server/schemas";
-import { DisposableRedis, isReplyError } from "@/types/redis";
+import { DisposableRedis } from "@/types/redis";
 import { on } from "events";
 import Redis from "ioredis";
-import z, { ZodError } from "zod";
+import z from "zod";
 import { baseLogger } from "../lib/logger";
 
 export const JOB_QUEUE = "jobs" as const;
 export const JOB_RESULTS = "results" as const;
 
-type TypedRedisErrorCode =
-  | "PARSE_ERROR"
-  | "INTERNAL_ERROR"
-  | "GENERIC_ERROR"
-  | "STRING_ERROR"
-  | "UNKNOWN_ERROR";
-
-export class TypedRedisError extends Error {
-  public override readonly name: "TypedRedisError" = "TypedRedisError" as const;
-
-  constructor(
-    public readonly code: TypedRedisErrorCode,
-    opts?: {
-      message?: string;
-      cause?: unknown;
-    },
-  ) {
-    const { message = `TypedRedisError: ${code}`, cause } = opts || {};
-    super(message, { cause });
-  }
-}
-
 const redisLogger = baseLogger.child({}, { msgPrefix: "[REDIS] " });
-const handleError = (
+const handleRedisError = (
   method: string,
   cause: unknown,
   context?: Record<string, string>,
   log: boolean = true,
 ): never => {
-  if (cause instanceof ZodError) {
-    const message = `(${method}) Failed to parse data using zod`;
-    const ctx = {
-      parserError: z.prettifyError(cause),
-      ...context,
-    };
-    if (log) redisLogger.error(ctx, message);
-    throw new TypedRedisError("PARSE_ERROR", { message, cause });
-  } else if (isReplyError(cause)) {
-    const message = `(${method}) Encountered redis internal error`;
-    const ctx = {
-      name: cause.name,
-      command: cause.command,
-      redisErrorMsg: cause.message,
-      ...context,
-    };
-    if (log) redisLogger.error(ctx, message);
-    throw new TypedRedisError("INTERNAL_ERROR", { message, cause });
-  } else if (cause instanceof Error) {
-    const message = `(${method}) Encountered some error type`;
-    const ctx = {
-      name: cause.name,
-      genericErrorMsg: cause.message,
-      ...context,
-    };
-    if (log) redisLogger.error(ctx, message);
-    throw new TypedRedisError("GENERIC_ERROR", { message, cause });
-  } else if (typeof cause === "string") {
-    const message = `(${method}) Encountered string exception`;
-    const ctx = {
-      strMessage: cause,
-      ...context,
-    };
-    if (log) redisLogger.error(ctx, message);
-    throw new TypedRedisError("STRING_ERROR", { message, cause });
-  } else {
-    const message = `(${method}) Encountered unknown exception type`;
-    if (log) redisLogger.error({ ...context }, message);
-    throw new TypedRedisError("UNKNOWN_ERROR", { message, cause });
-  }
+  return handleError(cause, {
+    context,
+    writeLog: log,
+    logger: redisLogger.child({}, { msgPrefix: `(${method}) ` }),
+  });
 };
 
 const keys = {
@@ -111,7 +55,7 @@ export async function enqueueJob(redis: Redis, input: z.infer<typeof zJob>) {
       "Enqueued job",
     );
   } catch (error) {
-    return handleError("enqueueJob", error);
+    return handleRedisError("enqueueJob", error);
   }
 }
 
@@ -141,7 +85,7 @@ export async function consumeJob(
     return job;
   } catch (error) {
     // returns never -- satisfies ts
-    return handleError("consumeJob", error);
+    return handleRedisError("consumeJob", error);
   }
 }
 
@@ -157,7 +101,7 @@ export async function submitJobResult(
       `Submitted result for key: ${key}, ${JSON.stringify(input, null, 2)}`,
     );
   } catch (error) {
-    return handleError("submitJobResult", error, { key });
+    return handleRedisError("submitJobResult", error, { key });
   }
 }
 
@@ -177,7 +121,7 @@ export async function fetchJobResult(
     );
     return parsed;
   } catch (error) {
-    return handleError("fetchJobResult", error, { key });
+    return handleRedisError("fetchJobResult", error, { key });
   }
 }
 
@@ -190,7 +134,7 @@ export async function submitJobStatus(
   try {
     await redis.publish(key, JSON.stringify(input));
   } catch (error) {
-    return handleError("submitJobStatus", error, { key });
+    return handleRedisError("submitJobStatus", error, { key });
   }
 }
 
@@ -266,7 +210,7 @@ export class JobStatusConsumer {
       }
     } catch (error) {
       if ((error as Error).name !== "AbortError") {
-        return handleError("JobStatusConsumer.#iterate", error, {
+        return handleRedisError("JobStatusConsumer.#iterate", error, {
           key: this.channelKey,
         });
       }
@@ -379,7 +323,7 @@ export class RedisManager {
         }
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
-          return handleError("jobStatusIterator", error, { key });
+          return handleRedisError("jobStatusIterator", error, { key });
         }
         yield { status: "timed-out", id: jobId, type: "status" };
       }

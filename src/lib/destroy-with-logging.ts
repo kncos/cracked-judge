@@ -1,3 +1,4 @@
+import { handleError } from "./judge-error";
 import { baseLogger } from "./logger";
 import { tryCatchTimeout } from "./try-catch-timeout";
 
@@ -14,25 +15,24 @@ export const destroyWithLogging = async <T, U>(
 
   const res = await tryCatchTimeout(destroyMethod(), timeoutMs, onTimeout);
   const { status, error } = res;
-  const labelPrefix = label ? `[${label}] ` : "[cleanup] ";
+  const labelPrefix = label ? `[${label}] ` : "[Cleanup] ";
   const logger = baseLogger.child({ ...ctx }, { msgPrefix: labelPrefix });
 
   switch (status) {
     case "success":
-      logger.debug({ ...ctx }, `${labelPrefix}Resource successfully destroyed`);
+      logger.debug({ ...ctx }, `Resource successfully destroyed`);
       break;
     case "timeout":
       logger.warn(
         { ...ctx },
-        `${labelPrefix}Resource still not destroyed after ${timeoutMs}ms`,
+        `Resource still not destroyed after ${timeoutMs}ms`,
       );
       break;
     case "failure":
-      logger.error(
-        { ...ctx, errorMsg: error.message },
-        `${labelPrefix}Failed to destroy resource`,
-      );
-      break;
+      return handleError(error, {
+        overrideCode: "RESOURCE_DISPOSAL",
+        logger,
+      });
   }
   return res;
 };
