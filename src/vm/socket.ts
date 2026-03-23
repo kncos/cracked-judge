@@ -1,3 +1,4 @@
+import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import { baseLogger, registerProcess } from "@/lib/logger";
 import { $ } from "bun";
 import type pino from "pino";
@@ -55,9 +56,13 @@ export class VmSocketListener implements AsyncDisposable {
   };
 
   destroy = async () => {
-    this.proc.kill();
-    await VmSocketListener.rmSocketPath(this.vmfs);
-    this.socketLogger.info("Destroyed listener");
+    await destroyWithLogging(
+      async () => {
+        this.proc.kill();
+        await VmSocketListener.rmSocketPath(this.vmfs);
+      },
+      { label: "Socket", ctx: { vmId: this.vmfs.vmId } },
+    );
   };
 
   async [Symbol.asyncDispose]() {

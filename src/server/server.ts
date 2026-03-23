@@ -1,3 +1,4 @@
+import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import { baseLogger } from "@/lib/logger";
 import { onError } from "@orpc/client";
 import { RPCHandler as RPCHandlerWs } from "@orpc/server/bun-ws";
@@ -99,16 +100,15 @@ export class Server implements AsyncDisposable {
   };
 
   destroy = async () => {
-    try {
-      this.serverLogger.debug("Stopping server instance...");
-      await this.server.stop(true);
-      this.serverLogger.debug("Stopping redis manager instance...");
-      await this.redisManager.destoy();
-      this.serverLogger.info("Server and Redis manager stopped");
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "N/A";
-      this.serverLogger.error({ msg }, "Error destroying server instance");
-    }
+    await destroyWithLogging(
+      async () => {
+        await this.server.stop(true);
+        await this.redisManager.destoy();
+      },
+      {
+        label: "Server",
+      },
+    );
   };
 
   async [Symbol.asyncDispose]() {

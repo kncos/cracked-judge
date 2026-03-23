@@ -1,10 +1,7 @@
-import { baseLogger } from "@/lib/logger";
+import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import { Server } from "@/server/server";
 import type { VmConfig } from ".";
-import {
-  AsyncDisposableMap,
-  MultiAsyncDisposeError,
-} from "../lib/AsyncDisposableMap";
+import { AsyncDisposableMap } from "../lib/AsyncDisposableMap";
 import { tryCatch } from "../lib/utils";
 import { VM } from "./vm";
 
@@ -22,14 +19,15 @@ export class VmOrchestrator implements AsyncDisposable {
   };
 
   public destroy = async () => {
-    try {
-      await this.resources[Symbol.asyncDispose]();
-      await this.server.destroy();
-    } catch (error) {
-      if (error instanceof MultiAsyncDisposeError) {
-        baseLogger.error(error.cause, "Failed to dispose of VM orchestrator!");
-      }
-    }
+    await destroyWithLogging(
+      async () => {
+        await this.resources[Symbol.asyncDispose]();
+        await this.server.destroy();
+      },
+      {
+        label: "Orchestrator",
+      },
+    );
   };
 
   spawnVm = async (vmId?: string): Promise<string> => {

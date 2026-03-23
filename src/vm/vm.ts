@@ -1,3 +1,4 @@
+import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import {
   createFirecrackerClient,
   type FirecrackerClient,
@@ -85,16 +86,19 @@ export class VM implements AsyncDisposable {
   };
 
   destroy = async () => {
-    try {
-      await this.apiClient.PUT("/actions", {
-        body: { action_type: "SendCtrlAltDel" },
-      });
-      await Promise.race([this.proc.exited, Bun.sleep(2000)]);
-    } finally {
-      this.proc.kill();
-      await this.stack.disposeAsync();
-      await this.proc.exited;
-    }
+    await destroyWithLogging(
+      async () => {
+        await this.apiClient.PUT("/actions", {
+          body: { action_type: "SendCtrlAltDel" },
+        });
+        this.proc.kill();
+        await this.stack.disposeAsync();
+        await this.proc.exited;
+      },
+      {
+        label: this.vmId,
+      },
+    );
   };
 
   async [Symbol.asyncDispose]() {
