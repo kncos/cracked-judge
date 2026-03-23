@@ -392,32 +392,3 @@ export class RedisManager {
     await this.destoy();
   }
 }
-
-// [14:49:09.684] INFO (1095650): [REDIS] Submitted result for key: result:883dbcfa-a194-485c-a47c-42d3ffe0605d, {
-//   "id": "883dbcfa-a194-485c-a47c-42d3ffe0605d",
-//   "type": "result",
-//   "status": "wrong-answer",
-//   "runtimeMs": 100,
-//   "memoryKb": 100,
-//   "stdout": "wasd",
-//   "stderr": ""
-// }
-// [14:49:09.685] INFO (1095650): [server] Received a job result
-//     id: "883dbcfa-a194-485c-a47c-42d3ffe0605d"
-//     type: "result"
-//     status: "wrong-answer"
-//     runtimeMs: 100
-//     memoryKb: 100
-//     stdout: "wasd"
-//     stderr: ""
-// [14:49:09.685] TRACE (1095650): [server] submitJobResult: time elapsed 3ms
-// [14:49:09.686] TRACE (1095650): [vm0] (pid 1095688) Continuing...
-// [14:49:09.687] INFO (1095650): [REDIS] Getting job result for result:883dbcfa-a194-485c-a47c-42d3ffe0605d, data: {
-//   "id": "883dbcfa-a194-485c-a47c-42d3ffe0605d",
-//   "type": "result",
-//   "status": "wrong-answer",
-//   "runtimeMs": "100",
-//   "memoryKb": "100",
-//   "stdout": "wasd",
-//   "stderr": ""
-// }, parser success: false
