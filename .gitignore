@@ -11,3 +11,4 @@ rootfs.ext4
 build-tmp-*
 guest.js
 host.js
+todo.md
