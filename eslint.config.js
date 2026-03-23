@@ -20,6 +20,10 @@ export default tseslint.config(
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      // TS control flow can't track assignments inside callbacks, leading to
+      // false positives (e.g. timer assigned inside new Promise constructor)
+      "@typescript-eslint/no-unnecessary-condition": "off",
+      "@typescript-eslint/restrict-template-expressions": "off",
     },
   },
   {

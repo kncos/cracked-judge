@@ -1,3 +1,5 @@
+import { destroyWithLogging } from "@/lib/destroy-with-logging";
+import { baseLogger } from "@/lib/logger";
 import { $ } from "bun";
 import { join } from "node:path";
 import { type VmConfig } from ".";
@@ -11,6 +13,8 @@ const bindMount = async (params: {
   const { uid, gid, hostDir, guestDir } = params;
   await $`mount --bind --map-users 0:${uid}:65534 --map-groups 0:${gid}:65534 ${hostDir} ${guestDir}`.quiet();
 };
+
+const fsLogger = baseLogger.child({}, { msgPrefix: "[Filesys] " });
 
 export class VmFilesystem implements AsyncDisposable {
   private constructor(
@@ -73,7 +77,7 @@ export class VmFilesystem implements AsyncDisposable {
    * @param vmId id of the vm to remove the filesystem for
    * @param conf vmconfig used to set up that VM
    */
-  static destroy = async (vmId: string, conf: VmConfig) => {
+  private static destroy = async (vmId: string, conf: VmConfig) => {
     const vmfs = new VmFilesystem(vmId, conf);
     // first, just unmount and rm -rf the cell if they exist. These commands
     // should fail if the mountpoints don't exist or the cell doesn't exist,
@@ -89,7 +93,13 @@ export class VmFilesystem implements AsyncDisposable {
   };
 
   destroy = async () => {
-    await VmFilesystem.destroy(this.vmId, this.vmConf);
+    await destroyWithLogging(
+      () => VmFilesystem.destroy(this.vmId, this.vmConf),
+      {
+        label: "Filesys",
+        ctx: { vmId: this.vmId },
+      },
+    );
   };
 
   static create = async (
