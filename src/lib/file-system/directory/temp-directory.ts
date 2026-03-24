@@ -1,41 +1,23 @@
-import { CrackedError } from "@/lib/judge-error";
-import { fsProcLogHelper, fsProcResultFormatter } from "../utils";
-import { BaseDirectory } from "./base-directory";
+import { procLogAndMaybeThrow } from "../utils";
+import { BaseDir } from "./base-directory";
 
-export class TempDirectory extends BaseDirectory {
-  private constructor(dir: string) {
-    super(dir);
-  }
-
-  public static create(): TempDirectory {
+export class TempDir extends BaseDir {
+  constructor() {
     const cmd = ["mktemp", "-d"];
     const proc = Bun.spawnSync(cmd, { timeout: 1000 });
-
-    fsProcLogHelper(proc, cmd);
-    if (proc.exitCode !== 0) {
-      throw new CrackedError("FS_DIRECTORY", {
-        message: fsProcResultFormatter(
-          cmd,
-          proc,
-          "Failed to create temp directory",
-        ),
-      });
-    }
-
+    procLogAndMaybeThrow(
+      proc,
+      cmd,
+      "FS_DIRECTORY",
+      "Failed to create tmp directory",
+    );
     const dir = proc.stdout.toString().trim();
-    const instance = new TempDirectory(dir);
-
-    return instance;
+    super(dir);
   }
 
   protected performDestroy(): void {
     const cmd = ["rm", "-rf", this.dir];
     const proc = Bun.spawnSync(cmd, { timeout: 2500 });
-    fsProcLogHelper(proc, cmd);
-    if (proc.exitCode !== 0) {
-      throw new CrackedError("FS_DIRECTORY", {
-        message: fsProcResultFormatter(cmd, proc, this.baseDestroyErr),
-      });
-    }
+    procLogAndMaybeThrow(proc, cmd, "FS_DIRECTORY", this.baseDestroyErr);
   }
 }
