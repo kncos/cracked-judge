@@ -1,11 +1,11 @@
 #!/bin/sh
 set -eu
 
-# check env var
-if [ -z "${CXX26_FLAGS:-}" ]; then
-  echo "ERROR: CXX26_FLAGS environment var is not set"
-  exit 1
-fi
+# fetch env vars
+CPP26_ENV_PATH="/app/drivers/cpp26/cpp26.env"
+set -a
+source $CPP26_ENV_PATH
+set +a
 
 SYSTEM_H_DIR="/app/drivers/cpp26/include"
 SYSTEM_H_PATH="$SYSTEM_H_DIR/system.h"

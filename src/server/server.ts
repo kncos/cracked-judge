@@ -103,7 +103,7 @@ export class Server implements AsyncDisposable {
     await destroyWithLogging(
       async () => {
         await this.server.stop(true);
-        await this.redisManager.destoy();
+        await this.redisManager.destroy();
       },
       {
         label: "Server",

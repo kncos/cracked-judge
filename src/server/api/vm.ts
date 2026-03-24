@@ -1,4 +1,5 @@
 import { ORPCError } from "@orpc/client";
+import { writeFileSync } from "fs";
 import * as z from "zod";
 import { vmRoute } from "../orpc";
 import { zJob, zJobResult, zJobStatus } from "../schemas";
@@ -36,7 +37,15 @@ export const vm = {
         id: input.id,
       });
 
-      serverLogger.info(input, "Received a job result");
+      const prettyPrint = {
+        ...input,
+        stdout: input.stdout.slice(0, 512),
+        stderr: input.stderr.slice(0, 512),
+      };
+
+      serverLogger.info(prettyPrint, "Received a job result");
+      writeFileSync("/tmp/jobout.txt", input.stdout);
+      writeFileSync("/tmp/joberr.txt", input.stderr);
 
       return {
         action: "continue",
