@@ -27,3 +27,12 @@ export async function tryCatch<T, E = Error>(
 
 export const fileExists = (path: string) =>
   statSync(path, { throwIfNoEntry: false }) !== undefined;
+
+export const indentStr = (
+  str: string,
+  count: number = 1,
+  indent: string = "  ",
+) => {
+  const _indent = indent.repeat(count);
+  return str.replace(/^/gm, _indent);
+};
