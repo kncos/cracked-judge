@@ -1,4 +1,6 @@
 import * as Bun from "bun";
+import { statSync } from "node:fs";
+import { CrackedError } from "../judge-error";
 import { baseLogger } from "../logger";
 import { indentStr } from "../utils";
 
@@ -28,6 +30,7 @@ export const fsProcResultFormatter = (
     `  command: ${cmd.join(" ")}`,
     `  exit code: ${proc.exitCode}`,
     `  pid: ${proc.pid}`,
+    `  timed out: ${proc.exitedDueToTimeout ?? false}`,
     "  stdout:",
     indentStr(fsOutputParser(proc.stdout, 256), 1, ">   "),
     `  stderr:`,
@@ -52,19 +55,17 @@ const signalExitCodes = {
 
 export const fsProcLogHelper = (
   proc: Bun.SyncSubprocess<"pipe", "pipe">,
-  cmd?: string[],
+  cmd: string[],
 ) => {
   const { exitCode, stdout, stderr, pid } = proc;
   const out = fsOutputParser(stdout);
   const err = fsOutputParser(stderr);
   const baseMsg = `Process ${pid} exited with code ${exitCode}.`;
-  const ctx = cmd
-    ? {
-        out,
-        err,
-        cmd: cmd.join(" "),
-      }
-    : { out, err };
+  const ctx = {
+    out,
+    err,
+    cmd: cmd.join(" "),
+  };
 
   if (exitCode === 0) {
     fsLogger.trace(baseMsg);
@@ -76,4 +77,23 @@ export const fsProcLogHelper = (
   } else {
     fsLogger.warn(ctx, `${baseMsg} This is an unknown exit code`);
   }
+};
+
+export const fileExists = (path: string) =>
+  statSync(path, { throwIfNoEntry: false }) !== undefined;
+
+export const makeTempDir = (): string => {
+  const cmd = ["mktemp", "-d"];
+  const proc = Bun.spawnSync(cmd, { timeout: 1000 });
+  fsProcLogHelper(proc, cmd);
+  if (proc.exitCode !== 0) {
+    throw new CrackedError("FS_MKTEMP", {
+      message: fsProcResultFormatter(
+        cmd,
+        proc,
+        "Failed to create temporary directory",
+      ),
+    });
+  }
+  return proc.stdout.toString().trim();
 };

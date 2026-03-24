@@ -1,5 +1,3 @@
-import { statSync } from "node:fs";
-
 // Types for the result object with discriminated union
 type Success<T> = {
   data: T;
@@ -25,8 +23,13 @@ export async function tryCatch<T, E = Error>(
   }
 }
 
-export const fileExists = (path: string) =>
-  statSync(path, { throwIfNoEntry: false }) !== undefined;
+export function tryCatchSync<T, E = Error>(fn: () => T): Result<T, E> {
+  try {
+    return { data: fn(), error: null };
+  } catch (error) {
+    return { data: null, error: error as E };
+  }
+}
 
 export const indentStr = (
   str: string,
