@@ -1,6 +1,6 @@
 import * as Bun from "bun";
 import { statSync } from "node:fs";
-import { CrackedError } from "../judge-error";
+import { CrackedError, type CrackedErrorCode } from "../judge-error";
 import { baseLogger } from "../logger";
 import { indentStr } from "../utils";
 
@@ -51,6 +51,20 @@ const signalExitCodes = {
   139: "SIGSEGV: Something went wrong internally to the process",
   141: "SIGPIPE: Broken pipe",
   143: "SIGTERM: Process was manually terminated",
+};
+
+export const procLogAndMaybeThrow = (
+  proc: Bun.SyncSubprocess<"pipe", "pipe">,
+  cmd: string[],
+  code: CrackedErrorCode,
+  msg: string,
+) => {
+  fsProcLogHelper(proc, cmd);
+  if (proc.exitCode !== 0) {
+    throw new CrackedError(code, {
+      message: fsProcResultFormatter(cmd, proc, msg),
+    });
+  }
 };
 
 export const fsProcLogHelper = (

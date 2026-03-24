@@ -1,20 +1,13 @@
 import { CrackedError } from "@/lib/judge-error";
-import * as Bun from "bun";
-import {
-  fileExists,
-  fsLogger,
-  fsProcLogHelper,
-  fsProcResultFormatter,
-  isMountpoint,
-} from "../utils";
+import { fileExists, fsLogger, isMountpoint } from "../utils";
 
-export interface IDirectory {
+export interface IDir {
   readonly dir: string;
   destroy: () => void;
   [Symbol.dispose](): void;
 }
 
-export abstract class BaseDirectory implements IDirectory {
+export abstract class BaseDir implements IDir {
   protected readonly baseCreateErr: string;
   protected readonly baseDestroyErr: string;
   public readonly dir: string;
@@ -23,15 +16,6 @@ export abstract class BaseDirectory implements IDirectory {
     this.baseCreateErr = `Failed to create directory (${dir})`;
     this.baseDestroyErr = `Failed to destroy directory (${dir})`;
     this.dir = dir;
-  }
-
-  protected _logProc(proc: Bun.SyncSubprocess<"pipe", "pipe">, cmd: string[]) {
-    fsProcLogHelper(proc, cmd);
-    if (proc.exitCode !== 0) {
-      throw new CrackedError("FS_DIRECTORY", {
-        message: fsProcResultFormatter(cmd, proc, this.baseCreateErr),
-      });
-    }
   }
 
   public readonly destroy = () => {

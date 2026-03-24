@@ -1,7 +1,7 @@
 import path from "node:path";
 import { CrackedError } from "../judge-error";
 import { tryCatchSync } from "../utils";
-import { Directory } from "./directory/directory";
+import { Dir } from "./directory/directory";
 import {
   fsLogger,
   fsProcLogHelper,
@@ -12,8 +12,6 @@ import {
 
 export class OverlayMount {
   private constructor(
-    public readonly uid: string,
-    public readonly gid: string,
     public readonly hostDir: string,
     public readonly guestDir: string,
   ) {}
@@ -46,7 +44,7 @@ export class OverlayMount {
     const upperPath = path.join(tempDir, "upper");
     const workPath = path.join(tempDir, "workspace");
 
-    const upperRes = tryCatchSync(() => Directory.create(upperPath));
+    const upperRes = tryCatchSync(() => new Dir(upperPath));
     if (upperRes.error) {
       const message = `${baseErrMsg}: ${upperRes.error.message}`;
       throw new CrackedError("FS_OVERLAY_MOUNT", {
@@ -54,7 +52,7 @@ export class OverlayMount {
         cause: upperRes.error,
       });
     }
-    const workspaceRes = tryCatchSync(() => Directory.create(workPath));
+    const workspaceRes = tryCatchSync(() => new Dir(workPath));
     if (workspaceRes.error) {
       const message = `${baseErrMsg}: ${workspaceRes.error.message}`;
       throw new CrackedError("FS_OVERLAY_MOUNT", {
@@ -69,9 +67,10 @@ export class OverlayMount {
       "overlay",
       "overlay",
       "-o",
-      `lowerdir=${hostDir}`,
-      `upperDir=${upper.dir}`,
-      ``,
+      `lowerdir="${hostDir}"`,
+      `upperdir="${upperRes.data.dir}"`,
+      `workdir="${workspaceRes.data.dir}"`,
+      guestDir,
     ];
     const proc = Bun.spawnSync(cmd, {
       timeout: 1000,
@@ -82,13 +81,13 @@ export class OverlayMount {
         message: fsProcResultFormatter(cmd, proc, baseErrMsg),
       });
     }
-    return new OverlayMount(uid, gid, hostDir, guestDir);
+    return new OverlayMount(hostDir, guestDir);
   };
 
   public destroy = () => {
     if (!isMountpoint(this.guestDir)) {
       fsLogger.info(
-        `Bindmount at ${this.guestDir} is not a mount point. Skipping destroy()`,
+        `OverlayMount at ${this.guestDir} is not a mount point. Skipping destroy()`,
       );
       return;
     }
@@ -97,7 +96,7 @@ export class OverlayMount {
     const proc = Bun.spawnSync(cmd, {
       timeout: 1000,
     });
-    fsProcLogHelper(proc);
+    fsProcLogHelper(proc, cmd);
     if (proc.exitCode !== 0) {
       throw new CrackedError("FS_OVERLAY_MOUNT", {
         message: fsProcResultFormatter(

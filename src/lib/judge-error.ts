@@ -10,6 +10,7 @@ export type CrackedErrorCode =
   | "RESOURCE_DISPOSAL"
   | "FS_MKTEMP"
   | "FS_DIRECTORY"
+  | "FS_MOUNT"
   | "FS_BIND_MOUNT"
   | "FS_OVERLAY_MOUNT"
   | "FS_DEPENDENCY_CHECK"
