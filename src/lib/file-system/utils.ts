@@ -42,16 +42,6 @@ export const fsProcResultFormatter = (
   }
   return body;
 };
-// these are all failure modes for mount
-const errorCodes = [1, 2, 4, 8, 16, 32, 64];
-const signalExitCodes = {
-  130: "SIGINT: Interrupted, did you hit ctrl+c?",
-  135: "SIGBUS: Memory/alignment issue?",
-  137: "SIGKILL: Process was forcefully killed",
-  139: "SIGSEGV: Something went wrong internally to the process",
-  141: "SIGPIPE: Broken pipe",
-  143: "SIGTERM: Process was manually terminated",
-};
 
 export const procLogAndMaybeThrow = (
   proc: Bun.SyncSubprocess<"pipe", "pipe">,
@@ -65,6 +55,17 @@ export const procLogAndMaybeThrow = (
       message: fsProcResultFormatter(cmd, proc, msg),
     });
   }
+};
+
+// these are all failure modes for mount
+const errorCodes = [1, 2, 4, 8, 16, 32, 64];
+const signalExitCodes: Record<number, string> = {
+  130: "SIGINT: Interrupted, did you hit ctrl+c?",
+  135: "SIGBUS: Memory/alignment issue?",
+  137: "SIGKILL: Process was forcefully killed",
+  139: "SIGSEGV: Something went wrong internally to the process",
+  141: "SIGPIPE: Broken pipe",
+  143: "SIGTERM: Process was manually terminated",
 };
 
 export const fsProcLogHelper = (
