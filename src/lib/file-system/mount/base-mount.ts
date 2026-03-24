@@ -1,6 +1,6 @@
 import { CrackedError } from "@/lib/judge-error";
 import { RecursiveDir } from "../directory/recursive-directory";
-import { fsLogger, isMountpoint, procLogAndMaybeThrow } from "../utils";
+import { fsLogger, fsProcLogAndMaybeThrow, isMountpoint } from "../utils";
 
 export interface IMount {
   readonly hostDir: string;
@@ -39,7 +39,7 @@ export abstract class BaseMount implements IMount {
       if (isMountpoint(this.guestDir)) {
         const cmd = ["umount", "-l", this.guestDir];
         const proc = Bun.spawnSync(cmd, { timeout: 1000 });
-        procLogAndMaybeThrow(proc, cmd, "FS_MOUNT", this.baseUnmountErr);
+        fsProcLogAndMaybeThrow(proc, cmd, "FS_MOUNT", this.baseUnmountErr);
       } else {
         fsLogger.info(
           `Mount at ${this.guestDir} is not a mount point. Skipping destroy()`,
