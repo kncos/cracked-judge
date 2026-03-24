@@ -27,6 +27,12 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ["mkosi/**", "vmroot/**", "test/**", "eslint.config.js"],
+    ignores: [
+      "mkosi/**",
+      "vmroot/**",
+      "test/**",
+      "eslint.config.js",
+      "src/lib/firecracker-types.ts",
+    ],
   },
 );
