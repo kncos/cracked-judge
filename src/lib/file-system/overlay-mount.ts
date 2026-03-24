@@ -1,9 +1,13 @@
+import path from "node:path";
 import { CrackedError } from "../judge-error";
+import { tryCatchSync } from "../utils";
+import { Directory } from "./directory/directory";
 import {
   fsLogger,
   fsProcLogHelper,
   fsProcResultFormatter,
   isMountpoint,
+  makeTempDir,
 } from "./utils";
 
 export class OverlayMount {
@@ -15,36 +19,66 @@ export class OverlayMount {
   ) {}
 
   public static create = (params: {
-    uid: string;
-    gid: string;
     hostDir: string;
     guestDir: string;
   }): OverlayMount => {
-    const { uid, gid, hostDir, guestDir } = params;
-    const baseErrMsg = `Failed to bind mount directory (${hostDir} -> ${guestDir})`;
+    const { hostDir, guestDir } = params;
+    const baseErrMsg = `Failed to overlay mount directory (${hostDir} -> ${guestDir})`;
 
     if (isMountpoint(guestDir)) {
-      throw new CrackedError("FS_BIND_MOUNT", {
-        message: `${baseErrMsg}. The directory "${guestDir}" is already a mountpoint`,
+      const message = `${baseErrMsg}. The directory "${guestDir}" is already a mountpoint`;
+      fsLogger.error(message);
+      throw new CrackedError("FS_OVERLAY_MOUNT", {
+        message,
+      });
+    }
+
+    const tempDirResult = tryCatchSync(makeTempDir);
+    if (tempDirResult.error) {
+      const message = `${baseErrMsg}: ${tempDirResult.error.message}`;
+      fsLogger.error(message);
+      throw new CrackedError("FS_OVERLAY_MOUNT", {
+        message,
+        cause: tempDirResult.error,
+      });
+    }
+    const tempDir = tempDirResult.data;
+    const upperPath = path.join(tempDir, "upper");
+    const workPath = path.join(tempDir, "workspace");
+
+    const upperRes = tryCatchSync(() => Directory.create(upperPath));
+    if (upperRes.error) {
+      const message = `${baseErrMsg}: ${upperRes.error.message}`;
+      throw new CrackedError("FS_OVERLAY_MOUNT", {
+        message,
+        cause: upperRes.error,
+      });
+    }
+    const workspaceRes = tryCatchSync(() => Directory.create(workPath));
+    if (workspaceRes.error) {
+      const message = `${baseErrMsg}: ${workspaceRes.error.message}`;
+      throw new CrackedError("FS_OVERLAY_MOUNT", {
+        message,
+        cause: workspaceRes.error,
       });
     }
 
     const cmd = [
       "mount",
-      "--bind",
-      `--map-users`,
-      `0:${uid}:65534`,
-      `--map-groups`,
-      `0:${gid}:65534`,
-      hostDir,
-      guestDir,
+      "-t",
+      "overlay",
+      "overlay",
+      "-o",
+      `lowerdir=${hostDir}`,
+      `upperDir=${upper.dir}`,
+      ``,
     ];
     const proc = Bun.spawnSync(cmd, {
       timeout: 1000,
     });
-    fsProcLogHelper(proc);
+    fsProcLogHelper(proc, cmd);
     if (proc.exitCode !== 0) {
-      throw new CrackedError("FS_BIND_MOUNT", {
+      throw new CrackedError("FS_OVERLAY_MOUNT", {
         message: fsProcResultFormatter(cmd, proc, baseErrMsg),
       });
     }
@@ -65,7 +99,7 @@ export class OverlayMount {
     });
     fsProcLogHelper(proc);
     if (proc.exitCode !== 0) {
-      throw new CrackedError("FS_BIND_MOUNT", {
+      throw new CrackedError("FS_OVERLAY_MOUNT", {
         message: fsProcResultFormatter(
           cmd,
           proc,

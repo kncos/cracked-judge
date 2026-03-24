@@ -42,7 +42,7 @@ export class BindMount {
     const proc = Bun.spawnSync(cmd, {
       timeout: 1000,
     });
-    fsProcLogHelper(proc);
+    fsProcLogHelper(proc, cmd);
     if (proc.exitCode !== 0) {
       throw new CrackedError("FS_BIND_MOUNT", {
         message: fsProcResultFormatter(cmd, proc, baseErrMsg),
@@ -63,7 +63,7 @@ export class BindMount {
     const proc = Bun.spawnSync(cmd, {
       timeout: 1000,
     });
-    fsProcLogHelper(proc);
+    fsProcLogHelper(proc, cmd);
     if (proc.exitCode !== 0) {
       throw new CrackedError("FS_BIND_MOUNT", {
         message: fsProcResultFormatter(
@@ -79,8 +79,10 @@ export class BindMount {
     try {
       this.destroy();
     } catch (e) {
+      const message = `Failed to dispose BindMount (${this.guestDir})`;
+      fsLogger.error(message);
       throw new CrackedError("RESOURCE_DISPOSAL", {
-        message: "Failed to clean up resource BindMount",
+        message,
         cause: e,
       });
     }
