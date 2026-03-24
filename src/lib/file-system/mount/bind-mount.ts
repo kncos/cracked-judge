@@ -1,5 +1,5 @@
 import { CrackedError } from "@/lib/judge-error";
-import { fsLogger, isMountpoint, procLogAndMaybeThrow } from "../utils";
+import { fsLogger, fsProcLogAndMaybeThrow, isMountpoint } from "../utils";
 import { BaseMount } from "./base-mount";
 
 export class BindMount extends BaseMount {
@@ -21,7 +21,7 @@ export class BindMount extends BaseMount {
       this.guestDir,
     ];
     const proc = Bun.spawnSync(cmd, { timeout: 1000 });
-    procLogAndMaybeThrow(proc, cmd, "FS_BIND_MOUNT", this.baseMountErr);
+    fsProcLogAndMaybeThrow(proc, cmd, "FS_BIND_MOUNT", this.baseMountErr);
   }
 
   constructor(

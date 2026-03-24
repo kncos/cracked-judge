@@ -1,11 +1,11 @@
-import { procLogAndMaybeThrow } from "../utils";
+import { fsProcLogAndMaybeThrow } from "../utils";
 import { BaseDir } from "./base-directory";
 
 export class TempDir extends BaseDir {
   constructor() {
     const cmd = ["mktemp", "-d"];
     const proc = Bun.spawnSync(cmd, { timeout: 1000 });
-    procLogAndMaybeThrow(
+    fsProcLogAndMaybeThrow(
       proc,
       cmd,
       "FS_DIRECTORY",
@@ -18,6 +18,6 @@ export class TempDir extends BaseDir {
   protected performDestroy(): void {
     const cmd = ["rm", "-rf", this.dir];
     const proc = Bun.spawnSync(cmd, { timeout: 2500 });
-    procLogAndMaybeThrow(proc, cmd, "FS_DIRECTORY", this.baseDestroyErr);
+    fsProcLogAndMaybeThrow(proc, cmd, "FS_DIRECTORY", this.baseDestroyErr);
   }
 }
