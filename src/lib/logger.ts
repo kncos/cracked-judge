@@ -1,4 +1,4 @@
-import pino from "pino";
+import pino, { type Logger } from "pino";
 
 export const baseLogger = pino({
   level: "trace",
@@ -37,7 +37,7 @@ const bufferStream = async (
 //TODO: revisit this, maybe make it a util
 export const registerAsyncProc = (params: {
   proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
-  logger: pino.Logger;
+  logger: Logger;
 }) => {
   const { proc, logger } = params;
 
