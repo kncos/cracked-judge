@@ -34,7 +34,8 @@ const bufferStream = async (
   }
 };
 
-export const registerProcess = (params: {
+//TODO: revisit this, maybe make it a util
+export const registerAsyncProc = (params: {
   proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
   logger: pino.Logger;
 }) => {
@@ -45,13 +46,13 @@ export const registerProcess = (params: {
     { msgPrefix: `(pid ${String(proc.pid)}) ` },
   );
 
-  // ignored
   void bufferStream(proc.stdout, (input) => {
     procLogger.trace(input);
   });
   void bufferStream(proc.stderr, (input) => {
     procLogger.warn(input);
   });
+
   void proc.exited.then((exitCode) => {
     if (exitCode === 0) {
       procLogger.debug("Process exited successfully with code 0.");

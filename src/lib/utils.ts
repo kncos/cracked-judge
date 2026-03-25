@@ -44,8 +44,7 @@ export const indentStr = (
 };
 
 export const procOutputParser = (input: Buffer, maxLen: number = 256) => {
-  const decoder = new TextDecoder();
-  const text = decoder.decode(input);
+  const text = input.toString();
   if (maxLen <= 0) return text;
 
   if (text.length < maxLen) return text;
@@ -56,7 +55,7 @@ export const procOutputParser = (input: Buffer, maxLen: number = 256) => {
 
 export const procResultFormatter = (
   cmd: string[],
-  proc: Bun.SyncSubprocess<"pipe", "pipe">,
+  proc: Proc,
   header?: string,
 ) => {
   const body = [
@@ -85,11 +84,15 @@ const signalExitCodes: Record<number, string> = {
   143: "SIGTERM: Process was manually terminated",
 };
 
-export const procLogHelper = (
-  proc: Bun.SyncSubprocess<"pipe", "pipe">,
-  cmd: string[],
-  logger: Logger,
-) => {
+interface Proc {
+  pid: number;
+  exitCode: number;
+  stdout: Buffer<ArrayBufferLike>;
+  stderr: Buffer<ArrayBufferLike>;
+  exitedDueToTimeout?: boolean | undefined;
+}
+
+export function procLogHelper(proc: Proc, cmd: string[], logger: Logger) {
   const { exitCode, stdout, stderr, pid } = proc;
   const out = procOutputParser(stdout);
   const err = procOutputParser(stderr);
@@ -107,10 +110,10 @@ export const procLogHelper = (
   } else {
     logger.error(ctx, baseMsg);
   }
-};
+}
 
 export const procLogAndMaybeThrow = (
-  proc: Bun.SyncSubprocess<"pipe", "pipe">,
+  proc: Proc,
   cmd: string[],
   code: CrackedErrorCode,
   msg: string,
