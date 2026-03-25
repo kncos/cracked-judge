@@ -87,8 +87,8 @@ const signalExitCodes: Record<number, string> = {
 interface Proc {
   pid: number;
   exitCode: number;
-  stdout: Buffer<ArrayBufferLike>;
-  stderr: Buffer<ArrayBufferLike>;
+  stdout: Buffer;
+  stderr: Buffer;
   exitedDueToTimeout?: boolean | undefined;
 }
 
