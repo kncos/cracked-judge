@@ -1,5 +1,5 @@
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
-import { baseLogger, registerProcess } from "@/lib/logger";
+import { baseLogger, registerAsyncProc } from "@/lib/logger";
 import { $ } from "bun";
 import type pino from "pino";
 import { VmFilesystem } from "./filesys";
@@ -33,7 +33,7 @@ export class VmSocketListener implements AsyncDisposable {
       stdout: "pipe",
       stderr: "pipe",
     });
-    registerProcess({ proc, logger: socketLogger });
+    registerAsyncProc({ proc, logger: socketLogger });
     // get server to start listening
 
     return new VmSocketListener(vmfs, socketLogger, proc);

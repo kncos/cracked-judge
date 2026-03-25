@@ -4,7 +4,7 @@ import {
   type FirecrackerClient,
 } from "@/lib/firecracker-api";
 import { CrackedError } from "@/lib/judge-error";
-import { baseLogger, registerProcess } from "@/lib/logger";
+import { baseLogger, registerAsyncProc } from "@/lib/logger";
 import { join } from "path";
 import type { VmConfig } from ".";
 import { VmFilesystem } from "./filesys";
@@ -14,6 +14,9 @@ const getLogger = (vmId: string) => {
   const vmLogger = baseLogger.child({}, { msgPrefix: `[${vmId}] ` });
   return vmLogger;
 };
+
+const UID = "60000" as const;
+const GID = "60000" as const;
 
 export class VM implements AsyncDisposable {
   //private stack: AsyncDisposableStack;
@@ -33,17 +36,17 @@ export class VM implements AsyncDisposable {
 
     const proc = Bun.spawn(
       [
-        vmConf.jailerBinary,
+        vmConf.jailerBinaryPath,
         "--exec-file",
-        vmConf.firecrackerBinary,
+        vmConf.firecrackerBinaryPath,
         "--uid",
-        vmConf.uid,
+        UID,
         "--gid",
-        vmConf.gid,
+        GID,
         "--id",
         vmId,
         "--chroot-base-dir",
-        vmConf.jail,
+        vmConf.jailDir,
         "--",
         "--config-file",
         // we'll always use an overlayfs to bind to chroot/base for the vm
@@ -55,7 +58,7 @@ export class VM implements AsyncDisposable {
       },
     );
     // ongoing background process that pipes stdout/stderr to our logger
-    registerProcess({
+    registerAsyncProc({
       proc,
       logger: vmLogger,
     });
