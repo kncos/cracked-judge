@@ -2,8 +2,18 @@ import { fsProcLogAndMaybeThrow } from "../utils";
 import { BaseDir } from "./base-directory";
 
 export class TempDir extends BaseDir {
-  constructor() {
+  constructor(opts?: { template?: string; rootDir?: string }) {
+    const { template, rootDir } = opts || {};
     const cmd = ["mktemp", "-d"];
+
+    if (rootDir) {
+      cmd.push("-p", rootDir);
+    }
+
+    if (template) {
+      cmd.push(template);
+    }
+
     const proc = Bun.spawnSync(cmd, { timeout: 1000 });
     fsProcLogAndMaybeThrow(
       proc,

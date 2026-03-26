@@ -1,12 +1,23 @@
 import type { Logger } from "pino";
 import { CrackedError } from "../judge-error";
-import { baseLogger } from "../logger";
+import { baseLogger, bufferStream } from "../logger";
 import { invokeCallback, logAndRethrow } from "./utils";
 
 type ProcessResult = {
+  pid: number;
   exitCode: number;
   signal: NodeJS.Signals | null;
   success: boolean;
+};
+
+const getSubprocessResult = (proc: Bun.Subprocess): ProcessResult | null => {
+  if (proc.exitCode === null) {
+    return null;
+  }
+  const exitCode = proc.exitCode;
+  const signal = proc.signalCode;
+  const success = exitCode === 0 || signal === "SIGINT";
+  return { exitCode, signal, success, pid: proc.pid };
 };
 
 type ProcessLoggerOptions = {
@@ -19,10 +30,14 @@ type ProcessLoggerOptions = {
 };
 
 type ProcessCallbacks = Partial<{
-  preStart: () => void | Promise<void>;
-  postStart: () => void | Promise<void>;
-  preExit: (proc: AsyncProc) => void | Promise<void>;
-  postExit: (result: ProcessResult, proc: AsyncProc) => void | Promise<void>;
+  preCreate: () => void | Promise<void>;
+  postCreate: () => void | Promise<void>;
+  preDestroy: (proc: AsyncProc) => void | Promise<void>;
+  postDestroy: (result: ProcessResult, proc: AsyncProc) => void | Promise<void>;
+  onPrematureExit: (
+    result: ProcessResult,
+    proc: AsyncProc,
+  ) => void | Promise<void>;
   onError: (e: CrackedError) => void | Promise<void>;
 }>;
 
@@ -31,25 +46,29 @@ type AsyncProcParams = {
 } & ProcessCallbacks &
   Partial<ProcessLoggerOptions>;
 
-type ProcessMeta = {
-  cmd: string[];
-  pid: number;
-  destroyed: boolean;
+const throwUninitializedErr = (): never => {
+  throw new CrackedError("PROC_UNINITIALIZED", {
+    message:
+      "You're trying to call a method on an uninitialized process. " +
+      "Did you forget to call `create()` before using this resource?",
+  });
 };
 
-export class AsyncProc implements AsyncDisposable {
-  private constructor(
-    private readonly proc: Bun.Subprocess<"ignore", "pipe", "pipe">,
-    private readonly callbacks: ProcessCallbacks,
-    private readonly loggerOpts: ProcessLoggerOptions,
-    private readonly meta: ProcessMeta,
-  ) {}
+class AsyncProc implements AsyncDisposable {
+  // null until created
+  private proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | null = null;
+  private isDestroyed: boolean = false;
+  private isPrematureExit: boolean = false;
 
-  static create = async (params: AsyncProcParams) => {
-    const callbacks = {
+  public readonly cmd: string[];
+  private readonly callbacks: ProcessCallbacks;
+  private readonly loggerOpts: ProcessLoggerOptions;
+
+  public constructor(params: AsyncProcParams) {
+    this.callbacks = {
       ...params,
     };
-    const loggerOpts = {
+    this.loggerOpts = {
       logger: baseLogger.child({}, { msgPrefix: "[AsyncProc] " }),
       stdoutSilent: false,
       stderrSilent: false,
@@ -58,84 +77,181 @@ export class AsyncProc implements AsyncDisposable {
       internalErrorSilent: false,
       ...params,
     };
+    this.cmd = params.cmd;
+  }
 
-    let proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
-    try {
+  get pid() {
+    return this.proc?.pid ?? throwUninitializedErr();
+  }
+
+  private callPostCreate = async () => {
+    const { postCreate, onError } = this.callbacks;
+    if (!this.isPrematureExit && postCreate !== undefined) {
       await invokeCallback({
-        callback: callbacks.preStart,
-        errorCode: "PROC_PRE_START",
+        callback: postCreate,
+        errorCode: "PROC_POST_CREATE",
+        onError,
       });
+    } else if (postCreate !== undefined) {
+      this.loggerOpts.logger.warn(
+        { cmd: this.cmd },
+        "Skipping postCreate callback on process because it prematurely exited.",
+      );
+    }
+  };
 
-      proc = Bun.spawn({
-        cmd: params.cmd,
-        stderr: "pipe",
-        stdout: "pipe",
-      });
-
+  private callPreDestroy = async () => {
+    const { preDestroy, onError } = this.callbacks;
+    if (!this.isPrematureExit && preDestroy !== undefined) {
       await invokeCallback({
-        callback: callbacks.postStart,
-        errorCode: "PROC_POST_START",
+        callback: () => preDestroy?.(this),
+        errorCode: "PROC_PRE_DESTROY",
+        onError,
       });
-    } catch (e) {
-      logAndRethrow(e, loggerOpts.logger, loggerOpts.internalErrorSilent);
+    } else if (preDestroy !== undefined) {
+      this.loggerOpts.logger.warn(
+        { cmd: this.cmd },
+        "Skipping preDestroy callback on process because it prematurely exited.",
+      );
+    }
+  };
+
+  create = async () => {
+    if (this.proc !== null) {
       return;
     }
 
-    const meta = {
-      ...params,
-      pid: proc.pid,
-      destroyed: false,
-    };
-
-    return new AsyncProc(proc, callbacks, loggerOpts, meta);
-  };
-
-  get exitResult(): ProcessResult | null {
-    if (this.proc.exitCode === null) {
-      return null;
-    }
-    const exitCode = this.proc.exitCode;
-    const signal = this.proc.signalCode;
-    const success = exitCode === 0 || signal === "SIGINT";
-    return { exitCode, signal, success };
-  }
-
-  async getExitResult(): Promise<ProcessResult> {
-    const exitCode = await this.proc.exited;
-    const signal = this.proc.signalCode;
-    const success = exitCode === 0 || signal === "SIGINT";
-    return { exitCode, signal, success };
-  }
-
-  destroy = async () => {
-    if (this.meta.destroyed) {
-      this.loggerOpts.logger.debug("AsyncProc already destroyed");
-    }
-
-    const { preExit, postExit } = this.callbacks;
-
     try {
-      await invokeCallback({
-        callback: () => preExit?.(this),
-        errorCode: "PROC_PRE_EXIT",
-      });
-
-      // might already be killed by preExit if that was the
-      // graceful shutdown procedure
-      if (!this.proc.killed) this.proc.kill("SIGTERM");
-      const result = await this.getExitResult();
+      const { preCreate, onPrematureExit, onError } = this.callbacks;
 
       await invokeCallback({
-        callback: () => postExit?.(result, this),
-        errorCode: "PROC_POST_EXIT",
+        callback: preCreate,
+        errorCode: "PROC_PRE_CREATE",
+        onError,
       });
+
+      const {
+        stdoutSilent,
+        stderrSilent,
+        logger,
+        exitFailureSilent,
+        exitSuccessSilent,
+      } = this.loggerOpts;
+      const onExit = async (result: ProcessResult) => {
+        if (!this.isDestroyed) {
+          this.isPrematureExit = true;
+          await invokeCallback({
+            callback: () => onPrematureExit?.(result, this),
+            errorCode: "PROC_PREMATURE_EXIT_HANDLER_THREW",
+            onError,
+          });
+        }
+        const log = result.success
+          ? exitSuccessSilent
+            ? logger.silent
+            : logger.debug
+          : exitFailureSilent
+            ? logger.silent
+            : logger.error;
+        log(
+          `Process exited ` +
+            (result.success ? "successfully" : "unsuccessfully") +
+            (result.signal
+              ? `with signal ${result.signal} (exit code ${result.exitCode})`
+              : `with exit code ${result.exitCode}.`),
+        );
+      };
+
+      this.proc = Bun.spawn(this.cmd, {
+        stderr: "pipe",
+        stdout: "pipe",
+        async onExit(subprocess) {
+          const res = getSubprocessResult(subprocess);
+          if (res === null) {
+            throw new CrackedError("PROC_OTHER", {
+              message:
+                "Something went wrong with Bun.spawn? recieved unresolved subprocess in onExit",
+            });
+          }
+
+          await onExit(res);
+        },
+      });
+
+      // redirects incoming data from the buffers to the logger
+      if (!stdoutSilent) {
+        void bufferStream(this.proc.stdout, logger.trace);
+      }
+      if (!stderrSilent) {
+        void bufferStream(this.proc.stderr, logger.warn);
+      }
+
+      await this.callPostCreate();
     } catch (e) {
-      logAndRethrow(
+      return logAndRethrow(
         e,
         this.loggerOpts.logger,
         this.loggerOpts.internalErrorSilent,
       );
+    }
+  };
+
+  get exitResult(): ProcessResult | null {
+    const proc = this.proc ?? throwUninitializedErr();
+    return getSubprocessResult(proc);
+  }
+
+  async getExitResult(): Promise<ProcessResult> {
+    const proc = this.proc ?? throwUninitializedErr();
+    await proc.exited;
+    const res = this.exitResult;
+    if (res === null) {
+      throw new CrackedError("PROC_OTHER", {
+        message:
+          "Something went wrong. Couldn't get exit result after process already exited?",
+      });
+    }
+    return res;
+  }
+
+  destroy = async () => {
+    const proc = this.proc ?? throwUninitializedErr();
+
+    if (this.isDestroyed) {
       return;
+    }
+    // set to true here because callPreDestroy
+    this.isDestroyed = true;
+
+    // Generally speaking, the process should be killed by the destroy() method. The exception
+    // is when the process prematurely exits. If this state is encountered, it probably indicates
+    // a programmer error where isPrematureExit was not properly set on the onExit() callback
+    if (proc.killed && !this.isPrematureExit) {
+      this.loggerOpts.logger.warn(
+        { cmd: this.cmd },
+        "Encountered a process that has already been killed, but not marked as premature exit",
+      );
+    }
+
+    try {
+      // pre-destroy subroutine; handles logging & premature exit state
+      await this.callPreDestroy();
+
+      proc.kill("SIGTERM");
+      const result = await this.getExitResult();
+
+      const { postDestroy, onError } = this.callbacks;
+      await invokeCallback({
+        callback: () => postDestroy?.(result, this),
+        errorCode: "PROC_POST_DESTROY",
+        onError,
+      });
+    } catch (e) {
+      return logAndRethrow(
+        e,
+        this.loggerOpts.logger,
+        this.loggerOpts.internalErrorSilent,
+      );
     }
   };
 
@@ -143,3 +259,11 @@ export class AsyncProc implements AsyncDisposable {
     await this.destroy();
   }
 }
+
+export const createAsyncProc = async (
+  ...params: ConstructorParameters<typeof AsyncProc>
+) => {
+  const proc = new AsyncProc(...params);
+  await proc.create();
+  return proc;
+};

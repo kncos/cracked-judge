@@ -16,12 +16,16 @@ export const fsProcLogAndMaybeThrow = (
   cmd: string[],
   code: CrackedErrorCode,
   msg: string,
-) => procLogAndMaybeThrow(proc, cmd, code, msg, fsLogger);
+) => {
+  procLogAndMaybeThrow(proc, cmd, code, msg, fsLogger);
+};
 
 export const fsProcLogHelper = (
   proc: Bun.SyncSubprocess<"pipe", "pipe">,
   cmd: string[],
-) => procLogHelper(proc, cmd, fsLogger);
+) => {
+  procLogHelper(proc, cmd, fsLogger);
+};
 
 export const fileExists = (path: string) =>
   statSync(path, { throwIfNoEntry: false }) !== undefined;

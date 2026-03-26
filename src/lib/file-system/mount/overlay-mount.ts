@@ -14,7 +14,9 @@ export class OverlayMount extends BaseMount {
       });
     }
 
-    const upperRes = tryCatchSync(() => this.stack.use(new TempDir()));
+    const upperRes = tryCatchSync(() =>
+      this.stack.use(new TempDir({ template: "" })),
+    );
     if (upperRes.error) {
       const message = `${this.baseMountErr}: ${upperRes.error.message}`;
       fsLogger.error(message);
