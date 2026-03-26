@@ -5,6 +5,7 @@ import {
 } from "@/lib/firecracker-api";
 import { CrackedError } from "@/lib/judge-error";
 import { baseLogger, registerAsyncProc } from "@/lib/logger";
+import { createAsyncProc } from "@/lib/proc/async-proc";
 import { join } from "path";
 import type { VmConfig } from ".";
 import { VmFilesystem } from "./filesys";
@@ -30,10 +31,6 @@ export class VM implements AsyncDisposable {
   ) {}
 
   private static spawnProcess = (vmId: string, vmConf: VmConfig) => {
-    const confFilePath = join("base/", "vm-config.json");
-    const vmLogger = getLogger(vmId);
-    vmLogger.debug(`using config file ${confFilePath}`);
-
     const proc = Bun.spawn(
       [
         vmConf.jailerBinaryPath,
@@ -73,7 +70,39 @@ export class VM implements AsyncDisposable {
       const listener = await VmSocketListener.create(fs);
       stack.use(listener);
 
-      const proc = VM.spawnProcess(vmId, vmConf);
+      const confFilePath = join("base/", "vm-config.json");
+      const cmd = [
+        vmConf.jailerBinaryPath,
+        "--exec-file",
+        vmConf.firecrackerBinaryPath,
+        "--uid",
+        UID,
+        "--gid",
+        GID,
+        "--id",
+        vmId,
+        "--chroot-base-dir",
+        vmConf.jailDir,
+        "--",
+        "--config-file",
+        // we'll always use an overlayfs to bind to chroot/base for the vm
+        confFilePath,
+      ];
+      const proc = await createAsyncProc({
+        cmd,
+        async preDestroy() {
+          // call firecracker api to stop VM gracefully
+          const api = createFirecrackerClient({
+            socket: fs.firecrackerApiSocketPath,
+            vmId: vmId,
+            fcLogger: vmLogger,
+          });
+          await api.PUT("/actions", {
+            body: { action_type: "SendCtrlAltDel" },
+          });
+        },
+      });
+
       const vmLogger = getLogger(vmId).child({ procPid: proc.pid });
       const api = createFirecrackerClient({
         socket: fs.firecrackerApiSocketPath,

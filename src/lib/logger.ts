@@ -1,4 +1,4 @@
-import pino, { type Logger } from "pino";
+import pino from "pino";
 
 export const baseLogger = pino({
   level: "trace",
@@ -10,7 +10,7 @@ export const baseLogger = pino({
   },
 });
 
-const bufferStream = async (
+export const bufferStream = async (
   stream: ReadableStream<Uint8Array<ArrayBuffer>>,
   logFunc: (input: string) => void,
 ) => {
@@ -32,34 +32,4 @@ const bufferStream = async (
   if (buffer.length > 0) {
     logFunc(buffer);
   }
-};
-
-//TODO: revisit this, maybe make it a util
-export const registerAsyncProc = (params: {
-  proc: Bun.Subprocess<"ignore", "pipe", "pipe">;
-  logger: Logger;
-}) => {
-  const { proc, logger } = params;
-
-  const procLogger = logger.child(
-    {},
-    { msgPrefix: `(pid ${String(proc.pid)}) ` },
-  );
-
-  void bufferStream(proc.stdout, (input) => {
-    procLogger.trace(input);
-  });
-  void bufferStream(proc.stderr, (input) => {
-    procLogger.warn(input);
-  });
-
-  void proc.exited.then((exitCode) => {
-    if (exitCode === 0) {
-      procLogger.debug("Process exited successfully with code 0.");
-    } else if (exitCode === 143) {
-      procLogger.debug("Process exited successfully with SIGTERM");
-    } else {
-      procLogger.warn(`Process exited with code ${String(exitCode)}.`);
-    }
-  });
 };

@@ -39,11 +39,23 @@ export const invokeCallback = async (params: {
   }
 };
 
+export function logAndReturn<E = CrackedError>(
+  e: E,
+  logger: Logger,
+  silent: boolean = false,
+): E {
+  try {
+    logAndRethrow(e, logger, silent);
+  } catch (e) {
+    return e as E;
+  }
+}
+
 export function logAndRethrow(
   e: unknown,
   logger: Logger,
   silent: boolean = false,
-) {
+): never {
   const log = silent ? logger.silent : logger.error;
 
   if (e instanceof CrackedError) {
