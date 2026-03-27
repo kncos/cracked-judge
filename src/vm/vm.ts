@@ -1,119 +1,134 @@
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
-import {
-  createFirecrackerClient,
-  type FirecrackerClient,
-} from "@/lib/firecracker-api";
+import { BindMount, OverlayMount } from "@/lib/file-system";
+import { changePerms } from "@/lib/file-system/utils";
+import { createFirecrackerClient } from "@/lib/firecracker-api";
 import { CrackedError } from "@/lib/judge-error";
-import { baseLogger, registerAsyncProc } from "@/lib/logger";
+import { baseLogger } from "@/lib/logger";
 import { createAsyncProc } from "@/lib/proc/async-proc";
 import { join } from "path";
-import type { VmConfig } from ".";
-import { VmFilesystem } from "./filesys";
-import { VmSocketListener } from "./socket";
-
-const getLogger = (vmId: string) => {
-  const vmLogger = baseLogger.child({}, { msgPrefix: `[${vmId}] ` });
-  return vmLogger;
-};
 
 const UID = "60000" as const;
 const GID = "60000" as const;
 
-export class VM implements AsyncDisposable {
+class VM implements AsyncDisposable {
   //private stack: AsyncDisposableStack;
 
-  private constructor(
+  private stack: AsyncDisposableStack = new AsyncDisposableStack();
+  private readonly vmProcCmd: string[];
+
+  private readonly depsDir: string;
+  private readonly runDir: string;
+  private readonly jailDir: string;
+
+  private readonly vmRunDir: string;
+  private readonly vmDepsDir: string;
+
+  private readonly guestInitiatedSockPath: string;
+  private readonly hostInitiatedSockPath: string;
+  private readonly firecrackerSockPath: string;
+
+  private isCreated: boolean = false;
+  public isDestroyed: boolean = false;
+
+  constructor(
     public readonly vmId: string,
-    public readonly vmConf: VmConfig,
-    private proc: ReturnType<typeof VM.spawnProcess>,
-    public readonly apiClient: FirecrackerClient,
-    private stack: AsyncDisposableStack,
-  ) {}
+    public readonly vmRoot: string,
+  ) {
+    // host directories
+    this.depsDir = join(vmRoot, "base");
+    this.runDir = join(vmRoot, "run", vmId);
+    // jail directory where VM stuff goes
+    this.jailDir = join(vmRoot, "firecracker", vmId);
+    // directories inside vm chroot
+    this.vmRunDir = join(this.jailDir, "root", "run");
+    this.vmDepsDir = join(this.jailDir, "root", "base");
 
-  private static spawnProcess = (vmId: string, vmConf: VmConfig) => {
-    const proc = Bun.spawn(
-      [
-        vmConf.jailerBinaryPath,
-        "--exec-file",
-        vmConf.firecrackerBinaryPath,
-        "--uid",
-        UID,
-        "--gid",
-        GID,
-        "--id",
-        vmId,
-        "--chroot-base-dir",
-        vmConf.jailDir,
-        "--",
-        "--config-file",
-        // we'll always use an overlayfs to bind to chroot/base for the vm
-        confFilePath,
-      ],
-      {
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
-    // ongoing background process that pipes stdout/stderr to our logger
-    registerAsyncProc({
-      proc,
-      logger: vmLogger,
-    });
-    return proc;
-  };
+    this.guestInitiatedSockPath = join(this.runDir, "v.sock_52");
+    this.hostInitiatedSockPath = join(this.runDir, "v.sock");
+    this.firecrackerSockPath = join(this.runDir, "firecracker.sock");
 
-  static create = async (vmId: string, vmConf: VmConfig): Promise<VM> => {
-    const stack = new AsyncDisposableStack();
+    this.vmProcCmd = [
+      "./jailer",
+      "--exec-file",
+      "./firecracker",
+      "--uid",
+      UID,
+      "--gid",
+      GID,
+      "--id",
+      vmId,
+      "--chroot-base-dir",
+      this.jailDir,
+      "--",
+      "--config-file",
+      join(this.vmDepsDir, "vm-config.json"),
+    ];
+  }
+
+  create = async () => {
+    const vmId = this.vmId;
+    if (this.isCreated) {
+      return;
+    }
+
+    this.isCreated = true;
+
     try {
-      const fs = await VmFilesystem.create(vmId, vmConf);
-      stack.use(fs);
-      const listener = await VmSocketListener.create(fs);
-      stack.use(listener);
+      // we can place sockets in the host dir then bind mount them
+      // into the vm's /run/ directory, as well as any other metadata
+      const run = new BindMount(this.runDir, this.vmRunDir, UID, GID);
+      this.stack.use(run);
 
-      const confFilePath = join("base/", "vm-config.json");
-      const cmd = [
-        vmConf.jailerBinaryPath,
-        "--exec-file",
-        vmConf.firecrackerBinaryPath,
-        "--uid",
-        UID,
-        "--gid",
-        GID,
-        "--id",
-        vmId,
-        "--chroot-base-dir",
-        vmConf.jailDir,
-        "--",
-        "--config-file",
-        // we'll always use an overlayfs to bind to chroot/base for the vm
-        confFilePath,
-      ];
-      const proc = await createAsyncProc({
-        cmd,
+      // place dependencies in VM chroot dir using overlayfs so it can
+      // modify them ephemerally without cloning the large dependencies in full
+      const deps = new OverlayMount(this.depsDir, this.vmDepsDir);
+      this.stack.use(deps);
+
+      // change permissions in the overlay; this modifies the overlayfs layer
+      // and allows the VM uid/gid to access the appropriate files we have provided
+      changePerms({
+        path: this.vmDepsDir,
+        uid: UID,
+        gid: GID,
+        mod: "777",
+        recursive: true,
+      });
+
+      const socketProc = await createAsyncProc({
+        cmd: [
+          "socat",
+          `UNIX-LISTEN:${this.guestInitiatedSockPath},fork,reuseaddr`,
+          "TCP:localhost:3000",
+        ],
+        // SIGINT is a graceful exit for `socat` and it will clean up its own
+        // socket file that was created, which isn't the case with SIGTERM
+        killSignal: "SIGINT",
+        logger: baseLogger.child({}, { msgPrefix: `[SOCAT] (vm: ${vmId}) ` }),
+      });
+      this.stack.use(socketProc);
+
+      const firecrackerSockPath = this.firecrackerSockPath;
+      const vmProc = await createAsyncProc({
+        cmd: this.vmProcCmd,
+        // before destroying the VM, send the ctrl+alt+delete signal
+        // to firecracker, which should cause the VM to gracefully shut down
         async preDestroy() {
-          // call firecracker api to stop VM gracefully
           const api = createFirecrackerClient({
-            socket: fs.firecrackerApiSocketPath,
+            socket: firecrackerSockPath,
             vmId: vmId,
-            fcLogger: vmLogger,
+            fcLogger: baseLogger.child(
+              {},
+              { msgPrefix: `[FIRECRACKER API] (vm: ${vmId}) ` },
+            ),
           });
           await api.PUT("/actions", {
             body: { action_type: "SendCtrlAltDel" },
           });
         },
       });
-
-      const vmLogger = getLogger(vmId).child({ procPid: proc.pid });
-      const api = createFirecrackerClient({
-        socket: fs.firecrackerApiSocketPath,
-        vmId: vmId,
-        fcLogger: vmLogger,
-      });
-
-      const vm = new VM(vmId, vmConf, proc, api, stack.move());
-      return vm;
+      this.stack.use(vmProc);
     } catch (e) {
-      await stack.disposeAsync();
+      await this.destroy();
       throw new CrackedError("VM_CREATE", {
         message: `Failed to create vm ${vmId}`,
         cause: e,
@@ -122,18 +137,15 @@ export class VM implements AsyncDisposable {
   };
 
   destroy = async () => {
+    if (this.isDestroyed) {
+      return;
+    }
+    this.isDestroyed = true;
     await destroyWithLogging(
       async () => {
-        await this.apiClient.PUT("/actions", {
-          body: { action_type: "SendCtrlAltDel" },
-        });
-        this.proc.kill();
         await this.stack.disposeAsync();
-        await this.proc.exited;
       },
-      {
-        label: this.vmId,
-      },
+      { label: this.vmId },
     );
   };
 
@@ -141,3 +153,10 @@ export class VM implements AsyncDisposable {
     await this.destroy();
   }
 }
+
+export const createVm = async (props: { vmId?: string; vmRoot: string }) => {
+  const { vmId = crypto.randomUUID(), vmRoot } = props;
+  const vm = new VM(vmId, vmRoot);
+  await vm.create();
+  return vm;
+};

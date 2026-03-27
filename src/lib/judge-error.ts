@@ -13,6 +13,8 @@ export type CrackedErrorCode =
   | "FS_MOUNT"
   | "FS_BIND_MOUNT"
   | "FS_OVERLAY_MOUNT"
+  | "FS_CHOWN"
+  | "FS_CHMOD"
   | "FS_DEPENDENCY_CHECK"
   | "PROC_SPAWN"
   | "PROC_PRE_CREATE"
