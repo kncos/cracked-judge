@@ -1,3 +1,4 @@
+import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import genericPool from "generic-pool";
 import { createVm } from "./vm";
 
@@ -19,5 +20,17 @@ export const vmPoolFactory: genericPool.Factory<VM> = {
 export const createVmPool = async () => {
   const pool = genericPool.createPool(vmPoolFactory);
   await pool.ready();
-  return pool;
+
+  const disposablePool = pool as typeof pool & AsyncDisposable;
+  disposablePool[Symbol.asyncDispose] = async () => {
+    await destroyWithLogging(
+      async () => {
+        await pool.drain();
+        await pool.clear();
+      },
+      { label: "VM Pool" },
+    );
+  };
+
+  return disposablePool;
 };
