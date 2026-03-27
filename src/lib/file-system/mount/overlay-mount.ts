@@ -5,6 +5,10 @@ import { fsLogger, fsProcLogAndMaybeThrow, isMountpoint } from "../utils";
 import { BaseMount } from "./base-mount";
 
 export class OverlayMount extends BaseMount {
+  readonly uid?: string;
+  readonly gid?: string;
+  readonly mod?: string;
+
   private create() {
     if (isMountpoint(this.guestDir)) {
       const message = `${this.baseMountErr}: "${this.guestDir}" is already a mountpoint`;
@@ -54,6 +58,7 @@ export class OverlayMount extends BaseMount {
 
   constructor(hostDir: string, guestDir: string) {
     super(hostDir, guestDir);
+
     try {
       this.create();
     } catch (e) {

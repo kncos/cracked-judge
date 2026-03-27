@@ -42,7 +42,9 @@ type ProcessCallbacks = Partial<{
 }>;
 
 type AsyncProcParams = {
-  cmd: string[];
+  cmd: readonly string[];
+  killSignal?: NodeJS.Signals;
+  killTimeoutBeforeSigkill?: number;
 } & ProcessCallbacks &
   Partial<ProcessLoggerOptions>;
 
@@ -60,9 +62,11 @@ class AsyncProc implements AsyncDisposable {
   private isDestroyed: boolean = false;
   private isPrematureExit: boolean = false;
 
-  public readonly cmd: string[];
+  public readonly cmd: readonly string[];
   private readonly callbacks: ProcessCallbacks;
   private readonly loggerOpts: ProcessLoggerOptions;
+  private readonly killSignal: NodeJS.Signals;
+  private readonly killTimeoutBeforeSigkill: number;
 
   public constructor(params: AsyncProcParams) {
     this.callbacks = {
@@ -78,6 +82,8 @@ class AsyncProc implements AsyncDisposable {
       ...params,
     };
     this.cmd = params.cmd;
+    this.killSignal = params.killSignal ?? "SIGTERM";
+    this.killTimeoutBeforeSigkill = params.killTimeoutBeforeSigkill ?? 3000;
   }
 
   get pid() {
@@ -162,7 +168,9 @@ class AsyncProc implements AsyncDisposable {
         );
       };
 
-      this.proc = Bun.spawn(this.cmd, {
+      this.proc = Bun.spawn({
+        // fixes type err with readonly
+        cmd: [...this.cmd],
         stderr: "pipe",
         stdout: "pipe",
         async onExit(subprocess) {
@@ -237,8 +245,15 @@ class AsyncProc implements AsyncDisposable {
       // pre-destroy subroutine; handles logging & premature exit state
       await this.callPreDestroy();
 
-      proc.kill("SIGTERM");
+      proc.kill(this.killSignal);
+      const timer = setTimeout(() => {
+        proc.kill("SIGKILL");
+      }, this.killTimeoutBeforeSigkill);
+
       const result = await this.getExitResult();
+      if (timer) {
+        clearTimeout(timer);
+      }
 
       const { postDestroy, onError } = this.callbacks;
       await invokeCallback({
