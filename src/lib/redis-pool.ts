@@ -14,12 +14,13 @@ export const redisPoolFactory: genericPool.Factory<DisposableRedis> = {
     return client;
   },
   validate: async function (client: DisposableRedis) {
-    const ready = await Promise.resolve(client.status === "ready");
     const subscriber = client.condition?.subscriber;
     if (client.condition?.subscriber !== false) {
       poolLogger.fatal({ subscriber }, "CLIENT IS SUBSCRIBED?");
+      return false;
     }
 
+    const ready = await Promise.resolve(client.status === "ready");
     return ready;
   },
 
