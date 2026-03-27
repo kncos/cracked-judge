@@ -5,7 +5,7 @@ import { baseLogger } from "./lib/logger";
 import { tryCatch } from "./lib/utils";
 import { judgeClient } from "./server/client";
 import type { VmConfig } from "./vm";
-import { VmOrchestrator } from "./vm/orchestrator";
+import { createVmPool } from "./vm/orchestrator";
 
 const vmroot = "/tmp/vmroot";
 const redis = new Redis();
@@ -22,11 +22,7 @@ const conf: VmConfig = {
   jailerBinary: join(vmroot, "jailer"),
 };
 
-await using orchestrator = await VmOrchestrator.create(conf);
-for (let i = 0; i < 3; i++) {
-  const id = await orchestrator.spawnVm(`vm${String(i)}`);
-  baseLogger.info(`Spawned VM with id ${id}`);
-}
+await using orchestrator = await createVmPool();
 
 const rl = createInterface({
   input: process.stdin,
