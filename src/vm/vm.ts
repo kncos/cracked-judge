@@ -7,6 +7,7 @@ import { baseLogger } from "@/lib/logger";
 import { createAsyncProc } from "@/lib/proc/async-proc";
 import { join } from "path";
 
+const logger = baseLogger.child({}, { msgPrefix: "[VM] " });
 const UID = "60000" as const;
 const GID = "60000" as const;
 
@@ -38,19 +39,20 @@ class VM implements AsyncDisposable {
     this.depsDir = join(vmRoot, "base");
     this.runDir = join(vmRoot, "run", vmId);
     // jail directory where VM stuff goes
-    this.jailDir = join(vmRoot, "firecracker", vmId);
+    this.jailDir = join(vmRoot, "jail");
     // directories inside vm chroot
-    this.vmRunDir = join(this.jailDir, "root", "run");
-    this.vmDepsDir = join(this.jailDir, "root", "base");
+    this.vmRunDir = join(this.jailDir, "firecracker", vmId, "root", "run");
+    this.vmDepsDir = join(this.jailDir, "firecracker", vmId, "root", "base");
 
     this.guestInitiatedSockPath = join(this.runDir, "v.sock_52");
     this.hostInitiatedSockPath = join(this.runDir, "v.sock");
     this.firecrackerSockPath = join(this.runDir, "firecracker.sock");
 
     this.vmProcCmd = [
-      "./jailer",
+      //TODO: temp solution
+      join(vmRoot, "jailer"),
       "--exec-file",
-      "./firecracker",
+      join(vmRoot, "firecracker"),
       "--uid",
       UID,
       "--gid",
@@ -63,6 +65,22 @@ class VM implements AsyncDisposable {
       "--config-file",
       join(this.vmDepsDir, "vm-config.json"),
     ];
+    //    logger.info(
+    //      {
+    //        vmId,
+    //        vmRoot,
+    //        depsDir: this.depsDir,
+    //        runDir: this.runDir,
+    //        jailDir: this.jailDir,
+    //        vmRunDir: this.vmRunDir,
+    //        vmDepsDir: this.vmDepsDir,
+    //        guestInitiatedSockPath: this.guestInitiatedSockPath,
+    //        hostInitiatedSockPath: this.hostInitiatedSockPath,
+    //        firecrackerSockPath: this.firecrackerSockPath,
+    //        vmProcCmd: this.vmProcCmd,
+    //      },
+    //      "VM INFO",
+    //    );
   }
 
   create = async () => {
@@ -78,11 +96,13 @@ class VM implements AsyncDisposable {
       // into the vm's /run/ directory, as well as any other metadata
       const run = new BindMount(this.runDir, this.vmRunDir, UID, GID);
       this.stack.use(run);
+      logger.debug("[VM] Created Bind Mount");
 
       // place dependencies in VM chroot dir using overlayfs so it can
       // modify them ephemerally without cloning the large dependencies in full
       const deps = new OverlayMount(this.depsDir, this.vmDepsDir);
       this.stack.use(deps);
+      logger.debug("[VM] Created Overlay Mount");
 
       // change permissions in the overlay; this modifies the overlayfs layer
       // and allows the VM uid/gid to access the appropriate files we have provided
@@ -93,6 +113,7 @@ class VM implements AsyncDisposable {
         mod: "777",
         recursive: true,
       });
+      logger.debug("[VM] Changed perms");
 
       const socketProc = await createAsyncProc({
         cmd: [
@@ -103,9 +124,10 @@ class VM implements AsyncDisposable {
         // SIGINT is a graceful exit for `socat` and it will clean up its own
         // socket file that was created, which isn't the case with SIGTERM
         killSignal: "SIGINT",
-        logger: baseLogger.child({}, { msgPrefix: `[SOCAT] (vm: ${vmId}) ` }),
+        logger: logger.child({}, { msgPrefix: `[SOCAT] (vm: ${vmId}) ` }),
       });
       this.stack.use(socketProc);
+      logger.debug("[VM] Created socket proc");
 
       const firecrackerSockPath = this.firecrackerSockPath;
       const vmProc = await createAsyncProc({
@@ -116,7 +138,7 @@ class VM implements AsyncDisposable {
           const api = createFirecrackerClient({
             socket: firecrackerSockPath,
             vmId: vmId,
-            fcLogger: baseLogger.child(
+            fcLogger: logger.child(
               {},
               { msgPrefix: `[FIRECRACKER API] (vm: ${vmId}) ` },
             ),
@@ -127,6 +149,7 @@ class VM implements AsyncDisposable {
         },
       });
       this.stack.use(vmProc);
+      logger.debug("[VM] Created vm proc");
     } catch (e) {
       await this.destroy();
       throw new CrackedError("VM_CREATE", {
@@ -155,8 +178,29 @@ class VM implements AsyncDisposable {
 }
 
 export const createVm = async (props: { vmId?: string; vmRoot: string }) => {
+  logger.debug("createVm Factory invoked");
   const { vmId = crypto.randomUUID(), vmRoot } = props;
+  logger.debug({ vmId, vmRoot }, "Creating VM with params:");
   const vm = new VM(vmId, vmRoot);
-  await vm.create();
+  logger.debug("VM Constructor invoked");
+  try {
+    await vm.create();
+    logger.debug("VM create method returned");
+  } catch (e) {
+    if (e instanceof CrackedError) {
+      logger.error(
+        {
+          message: e.message || "n/a",
+          code: e.code,
+          causeMsg: e.cause.message,
+          causeName: e.cause.name,
+          causeStack: e.cause.stack,
+        },
+        "FAILED TO CREATE VM",
+      );
+    } else {
+      logger.error({ message: e.message }, "UNKNOWN ERROR CREATING VM");
+    }
+  }
   return vm;
 };

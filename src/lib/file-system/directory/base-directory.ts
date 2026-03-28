@@ -40,4 +40,9 @@ export abstract class BaseDir implements IDir {
   [Symbol.dispose](): void {
     this.destroy();
   }
+
+  [Symbol.asyncDispose]() {
+    this[Symbol.dispose]();
+    return Promise.resolve();
+  }
 }

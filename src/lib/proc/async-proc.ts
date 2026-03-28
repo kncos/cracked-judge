@@ -188,10 +188,14 @@ class AsyncProc implements AsyncDisposable {
 
       // redirects incoming data from the buffers to the logger
       if (!stdoutSilent) {
-        void bufferStream(this.proc.stdout, logger.trace);
+        void bufferStream(this.proc.stdout, (m) => {
+          logger.trace(m);
+        });
       }
       if (!stderrSilent) {
-        void bufferStream(this.proc.stderr, logger.warn);
+        void bufferStream(this.proc.stderr, (m) => {
+          logger.warn(m);
+        });
       }
 
       await this.callPostCreate();

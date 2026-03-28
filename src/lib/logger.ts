@@ -10,6 +10,25 @@ export const baseLogger = pino({
   },
 });
 
+//export const baseLogger = pino(
+//  {
+//    level: "trace",
+//  },
+//  {
+//    write: (input) => {
+//      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+//      const obj = JSON.parse(input);
+//      const { level, time, pid, hostname, msg, ...rest } = obj;
+//
+//      const lines = [`${msg}\n`];
+//      if (Object.keys(rest).length > 0) {
+//        lines.push(`${indentStr(JSON.stringify(rest, null, 2))}\n`);
+//      }
+//      process.stdout.write(lines.join("\n"));
+//    },
+//  },
+//);
+
 export const bufferStream = async (
   stream: ReadableStream<Uint8Array<ArrayBuffer>>,
   logFunc: (input: string) => void,
