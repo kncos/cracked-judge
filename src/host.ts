@@ -1,41 +1,47 @@
 import Redis from "ioredis";
-import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { baseLogger } from "./lib/logger";
 import { tryCatch } from "./lib/utils";
 import { judgeClient } from "./server/client";
-import type { VmConfig } from "./vm";
+import { Server } from "./server/server";
 import { createVmPool } from "./vm/orchestrator";
 
-const vmroot = "/tmp/vmroot";
+const logger = baseLogger.child({}, { msgPrefix: "[HOST] " });
+
 const redis = new Redis();
 await redis.flushall();
+logger.info("Started & Flushed redis");
 
-const conf: VmConfig = {
-  jail: join(vmroot, "jail"),
-  base: join(vmroot, "base"),
-  socks: join(vmroot, "run"),
-  workspace: join(vmroot, "workspace"),
-  uid: "60000",
-  gid: "60000",
-  firecrackerBinary: join(vmroot, "firecracker"),
-  jailerBinary: join(vmroot, "jailer"),
-};
-
-await using orchestrator = await createVmPool();
+const orchestrator = await createVmPool();
+logger.info("Created VM pool");
 
 const rl = createInterface({
   input: process.stdin,
 });
+logger.info("Created stdin interface");
 
-// out here
+await using server = await Server.create();
+
+const vm0 = await orchestrator.acquire();
+const vm1 = await orchestrator.acquire();
+const vm2 = await orchestrator.acquire();
+
 const cleanup = async () => {
-  baseLogger.info("Cleaning up index.ts redis connection");
+  await orchestrator.destroy(vm0);
+  await orchestrator.destroy(vm1);
+  await orchestrator.destroy(vm2);
+
+  logger.info("Cleaning up index.ts redis connection");
   redis.disconnect();
-  baseLogger.info("Closing file descriptors");
+  logger.info("Closing file descriptors");
   rl.close();
-  baseLogger.info("Graceful Shutdown: Goodbye");
+  logger.info("Closing VM pool");
+  await orchestrator.drain();
+  await orchestrator.clear();
+  logger.info("Host cleanup has completed");
 };
+
+logger.info("Ready to accept commands...");
 
 for await (const line of rl) {
   const segments = line
@@ -43,6 +49,10 @@ for await (const line of rl) {
     .split(" ")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+
+  // prints
+  console.log("console.log:", segments);
+  logger.info("still works?");
 
   if (segments.length === 0) {
     continue;
@@ -52,9 +62,10 @@ for await (const line of rl) {
     await cleanup();
     break;
   } else if (segments[0] === "submit") {
+    await Bun.sleep(0.1);
     const txt = segments.slice(1).join(" ").trim();
     if (!txt) {
-      baseLogger.error("Must specify text for job submission");
+      logger.error("Must specify text for job submission");
     }
 
     const file = new File([txt], "submission.cpp");
@@ -62,7 +73,7 @@ for await (const line of rl) {
       judgeClient.submit({ lang: "cpp", file }),
     );
     if (error) {
-      baseLogger.error(error, "failed to submit");
+      logger.error(error, "failed to submit");
       continue;
     }
 
@@ -73,7 +84,9 @@ for await (const line of rl) {
     }
   } else if (segments[0] === "view") {
     const res = await redis.lrange("script", 0, -1);
-    console.log(res);
+    logger.info({ res }, "View Result");
+  } else {
+    logger.warn({ segments }, "Unknown command");
   }
 }
 

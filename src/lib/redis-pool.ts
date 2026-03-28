@@ -30,7 +30,12 @@ export const redisPoolFactory: genericPool.Factory<DisposableRedis> = {
 };
 
 export const createRedisPool = async () => {
-  const pool = genericPool.createPool(redisPoolFactory, { min: 2, max: 128 });
+  const pool = genericPool.createPool(redisPoolFactory, {
+    min: 2,
+    max: 128,
+    testOnBorrow: true,
+    testOnReturn: true,
+  });
   await pool.ready();
   return pool;
 };

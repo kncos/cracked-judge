@@ -60,4 +60,9 @@ export abstract class BaseMount implements IMount {
       });
     }
   }
+
+  [Symbol.asyncDispose]() {
+    this[Symbol.dispose]();
+    return Promise.resolve();
+  }
 }
