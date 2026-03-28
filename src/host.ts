@@ -21,10 +21,13 @@ const rl = createInterface({
 logger.info("Created stdin interface");
 
 await using server = await Server.create();
+await Bun.sleep(100);
 
 const vm0 = await orchestrator.acquire();
 const vm1 = await orchestrator.acquire();
 const vm2 = await orchestrator.acquire();
+
+const { promise: isDeadPromise, resolve } = Promise.withResolvers();
 
 const cleanup = async () => {
   await orchestrator.destroy(vm0);
@@ -39,11 +42,13 @@ const cleanup = async () => {
   await orchestrator.drain();
   await orchestrator.clear();
   logger.info("Host cleanup has completed");
+  resolve();
 };
 
 logger.info("Ready to accept commands...");
 
-for await (const line of rl) {
+// eslint-disable-next-line @typescript-eslint/no-misused-promises
+rl.on("line", async (line) => {
   const segments = line
     .trim()
     .split(" ")
@@ -55,12 +60,11 @@ for await (const line of rl) {
   logger.info("still works?");
 
   if (segments.length === 0) {
-    continue;
+    return;
   }
 
   if (segments[0] === "exit") {
     await cleanup();
-    break;
   } else if (segments[0] === "submit") {
     await Bun.sleep(0.1);
     const txt = segments.slice(1).join(" ").trim();
@@ -74,7 +78,7 @@ for await (const line of rl) {
     );
     if (error) {
       logger.error(error, "failed to submit");
-      continue;
+      return;
     }
 
     for await (const val of iter) {
@@ -88,8 +92,7 @@ for await (const line of rl) {
   } else {
     logger.warn({ segments }, "Unknown command");
   }
-}
-
-void Bun.sleep(5000).then(() => {
-  console.log(process.getActiveResourcesInfo());
 });
+
+process.on("SIGINT", () => void cleanup());
+await isDeadPromise;

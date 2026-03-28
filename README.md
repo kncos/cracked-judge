@@ -14,19 +14,19 @@ bun run index.ts
 
 This project was created using `bun init` in bun v1.3.10. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
 
-script a
-script b
-script c
-script d
-script e
-script f
-script g
-script h
-script i
-script j
-script k
-script l
-script m
-script n
-script o
-script p
+submit a
+submit b
+submit c
+submit d
+submit e
+submit f
+submit g
+submit h
+submit i
+submit j
+submit k
+submit l
+submit m
+submit n
+submit o
+submit p

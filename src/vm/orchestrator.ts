@@ -30,20 +30,9 @@ export const createVmPool = async () => {
   const pool = genericPool.createPool(vmPoolFactory, {
     testOnBorrow: true,
     testOnReturn: true,
+    min: 0,
+    max: 32,
   });
   await pool.ready();
-
-  //  const disposablePool = pool as typeof pool & AsyncDisposable;
-  //  disposablePool[Symbol.asyncDispose] = async () => {
-  //    await destroyWithLogging(
-  //      async () => {
-  //        await pool.drain();
-  //        await pool.clear();
-  //      },
-  //      { label: "VM Pool" },
-  //    );
-  //  };
-  //
-  //  return disposablePool;
   return pool;
 };
