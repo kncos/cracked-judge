@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
 import { CrackedError } from "../judge-error";
 import { baseLogger, bufferStream } from "../logger";
-import { invokeCallback, logAndRethrow } from "./utils";
+import { exitCodeSignalMapping, invokeCallback, logAndRethrow } from "./utils";
 
 type ProcessResult = {
   pid: number;
@@ -16,6 +16,15 @@ const getSubprocessResult = (proc: Bun.Subprocess): ProcessResult | null => {
   }
   const exitCode = proc.exitCode;
   const signal = proc.signalCode;
+  const success = exitCode === 0 || signal === "SIGINT";
+  return { exitCode, signal, success, pid: proc.pid };
+};
+
+const waitForSubprocessResult = async (
+  proc: Bun.Subprocess,
+): Promise<ProcessResult> => {
+  const exitCode = await proc.exited;
+  const signal = exitCodeSignalMapping[exitCode] ?? null;
   const success = exitCode === 0 || signal === "SIGINT";
   return { exitCode, signal, success, pid: proc.pid };
 };
@@ -154,17 +163,17 @@ class AsyncProc implements AsyncDisposable {
         }
         const log = result.success
           ? exitSuccessSilent
-            ? logger.silent
-            : logger.debug
+            ? logger.silent.bind(logger)
+            : logger.debug.bind(logger)
           : exitFailureSilent
-            ? logger.silent
-            : logger.error;
+            ? logger.silent.bind(logger)
+            : logger.error.bind(logger);
         log(
           `Process exited ` +
             (result.success ? "successfully" : "unsuccessfully") +
             (result.signal
-              ? `with signal ${result.signal} (exit code ${result.exitCode})`
-              : `with exit code ${result.exitCode}.`),
+              ? ` with signal ${result.signal} (exit code ${result.exitCode})`
+              : ` with exit code ${result.exitCode}.`),
         );
       };
 
@@ -174,7 +183,10 @@ class AsyncProc implements AsyncDisposable {
         stderr: "pipe",
         stdout: "pipe",
         async onExit(subprocess) {
-          const res = getSubprocessResult(subprocess);
+          // TODO: handle hang?
+          // note: onExit can be called before the subprocess has even exited (timing/race condition).
+          // Furthermore, the process.exited promise can resolve while .exitCode and .signal are still null
+          const res = await waitForSubprocessResult(subprocess);
           if (res === null) {
             throw new CrackedError("PROC_OTHER", {
               message:
@@ -215,15 +227,7 @@ class AsyncProc implements AsyncDisposable {
 
   async getExitResult(): Promise<ProcessResult> {
     const proc = this.proc ?? throwUninitializedErr();
-    await proc.exited;
-    const res = this.exitResult;
-    if (res === null) {
-      throw new CrackedError("PROC_OTHER", {
-        message:
-          "Something went wrong. Couldn't get exit result after process already exited?",
-      });
-    }
-    return res;
+    return await waitForSubprocessResult(proc);
   }
 
   destroy = async () => {
@@ -234,6 +238,8 @@ class AsyncProc implements AsyncDisposable {
     }
     // set to true here because callPreDestroy
     this.isDestroyed = true;
+    const { logger } = this.loggerOpts;
+    logger.debug("Destroying AsyncProc...");
 
     // Generally speaking, the process should be killed by the destroy() method. The exception
     // is when the process prematurely exits. If this state is encountered, it probably indicates
@@ -249,15 +255,17 @@ class AsyncProc implements AsyncDisposable {
       // pre-destroy subroutine; handles logging & premature exit state
       await this.callPreDestroy();
 
-      proc.kill(this.killSignal);
-      const timer = setTimeout(() => {
-        proc.kill("SIGKILL");
-      }, this.killTimeoutBeforeSigkill);
+      if (!proc.killed) {
+        proc.kill(this.killSignal);
+        const timer = setTimeout(() => {
+          proc.kill("SIGKILL");
+        }, this.killTimeoutBeforeSigkill);
 
-      const result = await this.getExitResult();
-      if (timer) {
-        clearTimeout(timer);
+        if (timer) {
+          clearTimeout(timer);
+        }
       }
+      const result = await this.getExitResult();
 
       const { postDestroy, onError } = this.callbacks;
       await invokeCallback({

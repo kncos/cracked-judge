@@ -30,7 +30,7 @@ export const createVmPool = async () => {
   const pool = genericPool.createPool(vmPoolFactory, {
     testOnBorrow: true,
     testOnReturn: true,
-    min: 0,
+    min: 4,
     max: 32,
   });
   await pool.ready();
