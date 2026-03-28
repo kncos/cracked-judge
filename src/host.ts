@@ -23,17 +23,9 @@ logger.info("Created stdin interface");
 await using server = await Server.create();
 await Bun.sleep(100);
 
-const vm0 = await orchestrator.acquire();
-const vm1 = await orchestrator.acquire();
-const vm2 = await orchestrator.acquire();
-
 const { promise: isDeadPromise, resolve } = Promise.withResolvers();
 
 const cleanup = async () => {
-  await orchestrator.destroy(vm0);
-  await orchestrator.destroy(vm1);
-  await orchestrator.destroy(vm2);
-
   logger.info("Cleaning up index.ts redis connection");
   redis.disconnect();
   logger.info("Closing file descriptors");
@@ -66,12 +58,12 @@ rl.on("line", async (line) => {
   if (segments[0] === "exit") {
     await cleanup();
   } else if (segments[0] === "submit") {
-    await Bun.sleep(0.1);
     const txt = segments.slice(1).join(" ").trim();
     if (!txt) {
       logger.error("Must specify text for job submission");
     }
 
+    const vm = await orchestrator.acquire();
     const file = new File([txt], "submission.cpp");
     const { data: iter, error } = await tryCatch(
       judgeClient.submit({ lang: "cpp", file }),
@@ -86,6 +78,7 @@ rl.on("line", async (line) => {
       console.log(JSON.stringify(val, null, 2));
       console.log("--------");
     }
+    await orchestrator.release(vm);
   } else if (segments[0] === "view") {
     const res = await redis.lrange("script", 0, -1);
     logger.info({ res }, "View Result");

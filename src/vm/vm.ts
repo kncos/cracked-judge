@@ -46,7 +46,7 @@ class VM implements AsyncDisposable {
 
     this.guestInitiatedSockPath = join(this.runDir, "v.sock_52");
     this.hostInitiatedSockPath = join(this.runDir, "v.sock");
-    this.firecrackerSockPath = join(this.runDir, "firecracker.sock");
+    this.firecrackerSockPath = join(this.runDir, "firecracker.socket");
 
     this.vmProcCmd = [
       //TODO: temp solution
@@ -118,7 +118,8 @@ class VM implements AsyncDisposable {
         cmd: this.vmProcCmd,
         // before destroying the VM, send the ctrl+alt+delete signal
         // to firecracker, which should cause the VM to gracefully shut down
-        async preDestroy() {
+
+        async preDestroy(proc) {
           const api = createFirecrackerClient({
             socket: firecrackerSockPath,
             vmId: vmId,
@@ -127,9 +128,21 @@ class VM implements AsyncDisposable {
               { msgPrefix: `[FIRECRACKER API] (vm: ${vmId}) ` },
             ),
           });
-          await api.PUT("/actions", {
-            body: { action_type: "SendCtrlAltDel" },
-          });
+
+          try {
+            await api.PUT("/actions", {
+              body: { action_type: "SendCtrlAltDel" },
+            });
+            // wait for it to be killed for 250ms,
+            // for firecracker that *should* be enough... presumably
+            // if this fails, AsyncProc kills it forcefully
+            await Promise.race([Bun.sleep(250), proc.getExitResult()]);
+          } catch (error) {
+            baseLogger.error(
+              { errorMessage: (error as Error).message },
+              "Firecracker failed in preDestroy!",
+            );
+          }
         },
       });
       this.stack.use(vmProc);
