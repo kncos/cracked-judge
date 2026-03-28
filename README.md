@@ -18,7 +18,7 @@ I chose this design because I wanted to create a system of related parts which c
 
 1. The server which runs on the host is basically just a broker between the user clients and the worker VMs, meaning it could be a standalone product with the worker VMs possibly being a completely different setup in the future.
 2. The guest code that runs on the microVMs is also just a typescript client + filesystem setup that requests jobs and then executes on them. It is in no way coupled to firecracker, so a completely different approach could be used, or it could even be used as a complete standalone judge similar to Judge0 with minor tweaks.
-3. The VM management code within the host could also be a completely separate library that could be used for basically system using firecracker with minimal tweaks, I plan to move towards generality in the future by re-exposing the firecracker API on the VM object.
+3. The VM management code within the host could also be a completely separate library that could be used for basically any system using firecracker with minimal tweaks, I plan to move towards generality in the future by re-exposing the firecracker API on the VM object.
 4. Redis: because it was easy to get started and is totally sufficient for the level of reliability we would need for an application like this.
 
 # Other Notes
