@@ -36,7 +36,7 @@
                 } ];
                 shares = [ {
                   # use proto = "virtiofs" for MicroVMs that are started by systemd
-                  proto = "9p";
+                  # proto = "virtiofs";
                   tag = "ro-store";
                   # a host's /nix/store will be picked up so that no
                   # squashfs/erofs will be built for it.
@@ -46,9 +46,7 @@
 
                 hypervisor = "firecracker";
                 socket = "control.socket";
-                firecracker.vcpu = 1;
-                firecracker.mem = 1024;
-                microvm.shares.*.proto = "virtiofs";
+                firecracker.cpu = 1;
               };
             }
           ];
