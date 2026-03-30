@@ -44,11 +44,11 @@
                   mountPoint = "/nix/.ro-store";
                 } ];
 
-                # "qemu" has 9p built-in!
                 hypervisor = "firecracker";
                 socket = "control.socket";
-                vcpu = 1;
-                mem = 1024;
+                firecracker.vcpu = 1;
+                firecracker.mem = 1024;
+                microvm.shares.*.proto = "virtiofs";
               };
             }
           ];
