@@ -12,3 +12,4 @@ build-tmp-*
 guest.js
 host.js
 todo.md
+var.img

@@ -16,6 +16,13 @@ const handleShellRes = (res: $.ShellOutput) => {
   ].join("\n");
 };
 
+// map job langs to paths on the host
+const paths: Record<string, string> = {
+  cpp: "/app/drivers/cpp",
+  python: "/app/drivers/python",
+  bash: 
+};
+
 const main = async () => {
   while (true) {
     await Bun.sleep(1000);
@@ -32,6 +39,7 @@ const main = async () => {
       const compile = handleShellRes(
         await $`/app/drivers/cpp26/compile.sh`.nothrow(),
       );
+
       const checkpoint2 = Date.now();
       console.log(`Compile time: ${checkpoint2 - checkpoint1}ms`);
       const run = handleShellRes(await $`/app/drivers/cpp26/run.sh`.nothrow());
