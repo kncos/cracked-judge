@@ -20,6 +20,8 @@
         my-microvm = self.nixosConfigurations.my-microvm.config.microvm.declaredRunner;
       };
 
+
+
       nixosConfigurations = {
         my-microvm = nixpkgs.lib.nixosSystem {
           inherit system;
@@ -28,6 +30,11 @@
             {
               networking.hostName = "my-microvm";
               users.users.root.password = "";
+
+              environment.systemPackages = [
+                nixpkgs.legacyPackages.${system}.fastfetch
+              ];
+
               microvm = {
                 volumes = [ {
                   mountPoint = "/var";
