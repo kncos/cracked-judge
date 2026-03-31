@@ -58,7 +58,7 @@ type AsyncProcParams = {
   Partial<ProcessLoggerOptions>;
 
 const throwUninitializedErr = (): never => {
-  throw new CrackedError("PROC_UNINITIALIZED", {
+  throw new CrackedError("UNINITIALIZED", {
     message:
       "You're trying to call a method on an uninitialized process. " +
       "Did you forget to call `create()` before using this resource?",
