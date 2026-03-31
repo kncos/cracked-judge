@@ -11,16 +11,20 @@
     inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { self, nixpkgs, microvm }:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      microvm,
+    }:
     let
       system = "x86_64-linux";
-    in {
+    in
+    {
       packages.${system} = {
         default = self.packages.${system}.my-microvm;
         my-microvm = self.nixosConfigurations.my-microvm.config.microvm.declaredRunner;
       };
-
-
 
       nixosConfigurations = {
         my-microvm = nixpkgs.lib.nixosSystem {
@@ -33,26 +37,26 @@
 
               environment.systemPackages = [
                 nixpkgs.legacyPackages.${system}.fastfetch
+                nixpkgs.legacyPackages.${system}.isolate
               ];
-              config.
 
               microvm = {
-                volumes = [ {
-                  mountPoint = "/var";
-                  image = "var.img";
-                  size = 256;
-                } ];
-#                shares = [ {
-#                  # use proto = "virtiofs" for MicroVMs that are started by systemd
-#                  # proto = "virtiofs";
-#                  tag = "ro-store";
-#                  # a host's /nix/store will be picked up so that no
-#                  # squashfs/erofs will be built for it.
-#                  source = "/nix/store";
-#                  mountPoint = "/nix/.ro-store";
-#                } ];
-
-                kernel
+                volumes = [
+                  {
+                    mountPoint = "/var";
+                    image = "var.img";
+                    size = 256;
+                  }
+                ];
+                #                shares = [ {
+                #                  # use proto = "virtiofs" for MicroVMs that are started by systemd
+                #                  # proto = "virtiofs";
+                #                  tag = "ro-store";
+                #                  # a host's /nix/store will be picked up so that no
+                #                  # squashfs/erofs will be built for it.
+                #                  source = "/nix/store";
+                #                  mountPoint = "/nix/.ro-store";
+                #                } ];
 
                 hypervisor = "firecracker";
                 socket = "control.socket";
