@@ -34,19 +34,19 @@
                   image = "var.img";
                   size = 256;
                 } ];
-                shares = [ {
-                  # use proto = "virtiofs" for MicroVMs that are started by systemd
-                  # proto = "virtiofs";
-                  tag = "ro-store";
-                  # a host's /nix/store will be picked up so that no
-                  # squashfs/erofs will be built for it.
-                  source = "/nix/store";
-                  mountPoint = "/nix/.ro-store";
-                } ];
+#                shares = [ {
+#                  # use proto = "virtiofs" for MicroVMs that are started by systemd
+#                  # proto = "virtiofs";
+#                  tag = "ro-store";
+#                  # a host's /nix/store will be picked up so that no
+#                  # squashfs/erofs will be built for it.
+#                  source = "/nix/store";
+#                  mountPoint = "/nix/.ro-store";
+#                } ];
+
 
                 hypervisor = "firecracker";
                 socket = "control.socket";
-                firecracker.cpu = 1;
               };
             }
           ];
