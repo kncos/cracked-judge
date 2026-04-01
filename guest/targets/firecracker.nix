@@ -27,7 +27,7 @@
 
   networking.enableIPv6 = false;
 
-  systemd.defaultUnit = "mutli-user.target";
+  systemd.defaultUnit = "multi-user.target";
 
   systemd.network.wait-online.enable = false;
   boot.initrd.systemd.network.wait-online.enable = false;

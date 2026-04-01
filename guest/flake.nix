@@ -1,3 +1,4 @@
+# guest/flake.nix
 {
   description = "Guest VM nixos config";
 
@@ -5,15 +6,36 @@
 
   outputs =
     { self, nixpkgs }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+    in
     {
       nixosModules.default = import ./configuration.nix;
+      nixosModules.firecracker = import ./targets/firecracker.nix;
+      nixosModules.kernel = import ./targets/kernel.nix;
+
       nixosConfigurations.my-guest = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
+        inherit system;
         modules = [
           self.nixosModules.default
-          { nixpkgs.hostPlatform = "x86_64-linux"; } # explicit
+          self.nixosModules.firecracker
+          self.nixosModules.kernel
+          { nixpkgs.hostPlatform = system; }
         ];
       };
-      packages.x86_64-linux.rootfs = self.nixosConfigurations.my-guest.config.system.build.tarball;
+
+      packages.${system} =
+        let
+          bundle = pkgs.callPackage ./targets/bundle.nix {
+            nixosConfig = self.nixosConfigurations.my-guest.config;
+            firecrackerKernel = self.nixosConfigurations.my-guest.config._module.args.firecrackerKernel;
+          };
+        in
+        {
+          rootfs-tar = self.nixosConfigurations.my-guest.config.system.build.tarball;
+          firecracker-bundle = bundle;
+          default = bundle;
+        };
     };
 }

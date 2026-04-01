@@ -1,9 +1,10 @@
 { pkgs, ... }:
 {
   networking.hostName = "guest";
-  users.users.root.password = "";
-
-  boot.loader.grub.enable = false;
+  users.users.root = {
+    password = "";
+    initialPassword = "";
+  };
 
   environment.systemPackages = with pkgs; [
     fastfetch
@@ -48,6 +49,10 @@
   };
 
   systemd.enableUnifiedCgroupHierarchy = true;
+
+  system.build.image = (pkgs.callPackage (pkgs.path + "/nixos/lib/make-disk-image.nix")) {
+    # import the config from within the module system via a separate callPackage in bundle.nix instead
+  };
 
   # ?
   system.stateVersion = "26.05";
