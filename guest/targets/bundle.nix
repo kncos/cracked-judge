@@ -53,10 +53,6 @@ let
         vcpu_count = 1;
         mem_size_mib = 1024;
       };
-      vsock = {
-        guest_cid = 3;
-        uds_path = "./run/v.sock";
-      };
     }
   );
 
