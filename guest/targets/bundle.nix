@@ -7,6 +7,7 @@
 }:
 
 let
+
   # --- rootfs.ext4 ---
   # NixOS has make-disk-image.nix which produces an ext4 image directly.
   # We use it with the already-evaluated nixosConfig.
@@ -40,6 +41,7 @@ let
       boot-source = {
         kernel_image_path = "vmlinux";
         boot_args = "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw init=${nixosConfig.system.build.toplevel}/init";
+        initrd_path = "initrd";
       };
       drives = [
         {
@@ -53,6 +55,11 @@ let
         vcpu_count = 1;
         mem_size_mib = 1024;
       };
+      # removed for now so i don't have to keep manually deleting this file
+      #vsock = {
+      #  guest_cid = 3;
+      #  uds_path = "/run/v.sock";
+      #};
     }
   );
 

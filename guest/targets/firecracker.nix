@@ -1,5 +1,5 @@
 # guest/targets/firecracker.nix
-{ pkgs, lib, ... }:
+{ pkgs, lib, nixosConfig, ... }:
 {
   boot.loader.grub.enable = false;
   boot.kernel.enable = false;
@@ -21,13 +21,17 @@
   boot.kernelPackages = lib.mkForce pkgs.linuxPackages;
 
   systemd.services = {
-    systemd-udevd.enable = false;
-    systemd-timesyncd.enable = false;
-    systemd-journald-audit.enable = false;
+    # Networking stuff: none of this is needed because we only need loopback
+    network-setup.enable = false;
     NetworkManager.enable = false;
     firewall.enable = false;
     resolvconf.enable = false;
-    udev-trigger.enable = false;
+
+    # other unnecessary stuff, not needed
+    systemd-udevd.enable = false;
+    systemd-timesyncd.enable = false;
+    systemd-journald-audit.enable = false;
+    systemd-udev-trigger.enable = false;
   };
 
   systemd.targets = {
