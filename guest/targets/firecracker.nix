@@ -41,7 +41,6 @@
     enable = true;
     wantedBy = [ "multi-user.target" ];
   };
-  boot.kernelParams = [ "console=ttyS0" ];
 
   networking.enableIPv6 = false;
   networking.useDHCP = false;
