@@ -9,18 +9,18 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+
+      firecrackerKernel = (import ./targets/kernel.nix { inherit pkgs; }).firecrackerKernel;
     in
     {
       nixosModules.default = import ./configuration.nix;
       nixosModules.firecracker = import ./targets/firecracker.nix;
-      nixosModules.kernel = import ./targets/kernel.nix;
 
       nixosConfigurations.my-guest = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [
           self.nixosModules.default
           self.nixosModules.firecracker
-          self.nixosModules.kernel
           { nixpkgs.hostPlatform = system; }
         ];
       };
@@ -29,7 +29,7 @@
         let
           bundle = pkgs.callPackage ./targets/bundle.nix {
             nixosConfig = self.nixosConfigurations.my-guest.config;
-            firecrackerKernel = self.nixosConfigurations.my-guest.config._module.args.firecrackerKernel;
+            inherit firecrackerKernel;
           };
         in
         {

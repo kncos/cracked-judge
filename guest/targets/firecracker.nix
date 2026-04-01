@@ -1,15 +1,33 @@
+# guest/targets/firecracker.nix
 { pkgs, lib, ... }:
 {
-  # no bootloader needed for firecracker
   boot.loader.grub.enable = false;
-  # w/ firecracker we bring our own vmlinux
   boot.kernel.enable = false;
+
+  # Disable the systemd initrd — it requires a real kernel with modules.
+  # Instead use the minimal NixOS stage-1 which can run without any modules.
+  boot.initrd.systemd.enable = false;
+
+  # No modules exist in the firecracker kernel (everything is =y)
+  boot.initrd.includeDefaultModules = false;
+  boot.initrd.availableKernelModules = lib.mkForce [ ];
+  boot.initrd.kernelModules = lib.mkForce [ ];
+  boot.kernelModules = lib.mkForce [ ];
+  boot.extraModulePackages = lib.mkForce [ ];
+
+  # Tell NixOS which kernel to use for building the initrd.
+  # We point it at a real package so it can build the initrd scripts,
+  # but since there are no modules it will be tiny.
+  boot.kernelPackages = lib.mkForce pkgs.linuxPackages;
 
   systemd.services = {
     systemd-udevd.enable = false;
     systemd-timesyncd.enable = false;
-    systemd-journald-audit.enable = lib.mkForce false;
-    NetworkManager.enable = lib.mkForce false;
+    systemd-journald-audit.enable = false;
+    NetworkManager.enable = false;
+    firewall.enable = false;
+    resolvconf.enable = false;
+    udev-trigger.enable = false;
   };
 
   systemd.targets = {
@@ -19,16 +37,25 @@
     suspend.enable = false;
   };
 
-  # firecracker kernel has no modules
-  boot.initrd = {
-    includeDefaultModules = false;
-    kernelModules = [ ];
+  systemd.services."serial-getty@ttyS0" = {
+    enable = true;
+    wantedBy = [ "multi-user.target" ];
   };
+  boot.kernelParams = [ "console=ttyS0" ];
 
   networking.enableIPv6 = false;
+  networking.useDHCP = false;
+  networking.interfaces = lib.mkForce { };
 
   systemd.defaultUnit = "multi-user.target";
-
   systemd.network.wait-online.enable = false;
-  boot.initrd.systemd.network.wait-online.enable = false;
+
+  fileSystems."/" = {
+    device = "/dev/vda";
+    fsType = "ext4";
+    options = [
+      "rw"
+      "relatime"
+    ];
+  };
 }

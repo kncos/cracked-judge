@@ -14,10 +14,10 @@ let
   };
 
   arch = pkgs.stdenv.hostPlatform.linuxArch;
-  firecrackerKernel = pkgs.fetchurl (
+  kernel = pkgs.fetchurl (
     kernelByArch.${arch} or (throw "Unsupported host platform arch for kernel: ${arch}")
   );
 in
 {
-  _module.args.firecrackerKernel = firecrackerKernel;
+  firecrackerKernel = kernel;
 }

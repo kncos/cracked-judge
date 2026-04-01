@@ -12,7 +12,6 @@ let
   # We use it with the already-evaluated nixosConfig.
   rootfsImage = import (pkgs.path + "/nixos/lib/make-disk-image.nix") {
     inherit pkgs lib;
-    inherit (pkgs) stdenv;
 
     config = nixosConfig;
 
