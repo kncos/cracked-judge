@@ -50,8 +50,12 @@ let
         }
       ];
       machine-config = {
-        vcpu_count = 2;
-        mem_size_mib = 512;
+        vcpu_count = 1;
+        mem_size_mib = 1024;
+      };
+      vsock = {
+        guest_cid = 3;
+        uds_path = "./run/v.sock";
       };
     }
   );
