@@ -35,18 +35,22 @@ in
       description = "Spawn worker runtime process";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        ExecStart = "${pkgs.bun}/bin/bun run /etc/guest.js";
         Restart = "always";
         RestartSec = "1s";
       };
+      path = [ "/run/current-system/sw" ];
       after = [
         "worker-socket-bridge.service"
       ];
+      script = ''
+        bun run /etc/guest.js 
+      '';
     };
 
     systemd.services.worker-socket-bridge = {
       description = "bridges worker-runtime network traffic to the vm socket";
       wantedBy = [ "multi-user.target" ];
+      path = [ "/run/current-system/sw" ];
       serviceConfig = {
         ExecStart = "${pkgs.socat}/bin/socat TCP-LISTEN:3000,fork,reuseaddr VSOCK-CONNECT:2:52";
         Restart = "always";
