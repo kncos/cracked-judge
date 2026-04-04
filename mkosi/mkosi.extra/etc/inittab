@@ -1,9 +1,0 @@
-# sysinit
-::sysinit:/etc/init.d/rcS
-
-ttyS0::once:/bin/sh -c "socat TCP-LISTEN:3000,fork,reuseaddr VSOCK-CONNECT:2:52"
-ttyS0::once:/bin/sh -c "/bin/bun run app/guest.js;echo 'guest exited: $?'";
-
-# reboot/shutdown
-::ctrlaltdel:/sbin/reboot -f
-::shutdown:/sbin/halt
