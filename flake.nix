@@ -1,9 +1,11 @@
 {
   description = "Judge for running untrusted user submitted-code with firecracker";
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
 
-  bun2nix.url = "github:nix-community/bun2nix";
-  bun2nix.inputs.nixpkgs.follows = "nixpkgs";
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    bun2nix.url = "github:nix-community/bun2nix";
+    bun2nix.inputs.nixpkgs.follows = "nixpkgs";
+  };
 
   nixConfig = {
     extra-substituters = [
@@ -17,13 +19,46 @@
   };
 
   outputs =
-    { self, nixpkgs }:
+    {
+      self,
+      nixpkgs,
+      bun2nix,
+    }:
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
+      mkDerivation = bun2nix.lib.${system}.mkDerivation;
     in
     {
-      devShells.default = pkgs.mkShell {
+      packages.${system} = {
+        host = mkDerivation {
+          pname = "crackedjudge-host";
+          version = "0.1.0";
+          src = ./.;
+          bunNix = ./bun.nix;
+          module = "src/host.ts";
+          buildArgs = [
+            "--target=bun"
+            "--outfile=host.js"
+          ];
+        };
+
+        guest = mkDerivation {
+          pname = "crackedjudge-guest";
+          version = "0.1.0";
+          src = ./.;
+          bunNix = ./bun.nix;
+          module = "src/guest.ts";
+          buildArgs = [
+            "--target=bun"
+            "--outfile=guest.js"
+          ];
+        };
+
+        default = self.packages.${system}.host;
+      };
+
+      devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
           bun
           bun2nix.packages.${system}.default
