@@ -28,5 +28,11 @@
         firecracker-bundle = self.nixosConfigurations.firecracker.config.firecracker.all.package;
         default = self.packages.${system}.firecracker-bundle;
       };
+
+      devShells.${system}.default = pkgs.mkShell {
+        packages = with pkgs; [
+          firecracker
+        ];
+      };
     };
 }
