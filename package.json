@@ -6,7 +6,7 @@
   "scripts": {
     "build": "bun run build:host;bun run build:guest",
     "build:host": "bun build --target=bun --outfile=host.js src/host.ts",
-    "build:guest": "bun build --target=bun --outfile=./mkosi/mkosi.extra/app/guest.js src/guest.ts",
+    "build:guest": "bun build --target=bun --outfile=guest/runtime/guest.js src/guest/index.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
@@ -15,6 +15,7 @@
     "@types/bun": "latest",
     "@types/eslint": "^9.6.1",
     "@types/node": "^25.5.0",
+    "bun2nix": "^2.0.8",
     "eslint": "^10.0.3",
     "openapi-fetch": "^0.17.0",
     "typescript-eslint": "^8.57.1"

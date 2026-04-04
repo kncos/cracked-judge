@@ -1,21 +1,6 @@
-import { $ } from "bun";
 import { tryCatch } from "../lib/utils";
 import { vmClient } from "../server/client";
 import { createJob } from "./job";
-
-const handleShellRes = (res: $.ShellOutput) => {
-  const d = new TextDecoder();
-  const err = d.decode(res.stderr);
-  const out = d.decode(res.stdout);
-  return [
-    `====> STDERR <====`,
-    err,
-    `====> STDOUT <====`,
-    out,
-    `====> END <====`,
-    `EXIT CODE: ${res.exitCode}`,
-  ].join("\n");
-};
 
 const main = async () => {
   while (true) {
@@ -37,4 +22,4 @@ const main = async () => {
   }
 };
 
-await main();
+void main();
