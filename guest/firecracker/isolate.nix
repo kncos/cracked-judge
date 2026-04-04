@@ -1,62 +1,88 @@
 {
   pkgs,
+  lib,
+  config,
   ...
 }:
+let
+  cfg = config.isolate;
+in
 {
-  nixpkgs.overlays = [
-    (final: prev: {
-      isolate = prev.isolate.overrideAttrs (oldAttrs: {
-        version = "2.2.1";
-        src = prev.fetchFromGitHub {
-          owner = "ioi";
-          repo = "isolate";
-          rev = "v2.2.1";
-          hash = "sha256-haH4fjL3cWayYrpUDwD4hUNlxIoN6MdO3QgAqimi/+c=";
-        };
-      });
-    })
-  ];
+  options.isolate = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Whether to enable the isolate module and related services";
+    };
 
-  security.isolate = {
-    enable = true;
+    fixEnvironment = lib.mkOption {
+      type = lib.types.enum [
+        "disabled"
+        "enabled"
+        "verbose"
+      ];
+      default = "enabled";
+      description = ''
+        Run isolate-check-environment -e if set to "enabled" or "verbose".
+        If 'verbose', isolate-check-environment runs for a second pass to print
+        diagnostic information and ensure that all of the fixes were applied
+      '';
+    };
   };
 
-  systemd.services.isolate-setup = {
-    description = "Setup cgroups and environment for isolate";
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
+  config = lib.mkIf cfg.enable {
+    nixpkgs.overlays = [
+      (final: prev: {
+        isolate = prev.isolate.overrideAttrs (oldAttrs: {
+          version = "2.2.1";
+          src = prev.fetchFromGitHub {
+            owner = "ioi";
+            repo = "isolate";
+            rev = "v2.2.1";
+            hash = "sha256-haH4fjL3cWayYrpUDwD4hUNlxIoN6MdO3QgAqimi/+c=";
+          };
+        });
+      })
+    ];
+
+    security.isolate = {
+      enable = true;
     };
-    path = [ "/run/current-system/sw" ];
 
-    #* NOTE: Removed this from the script, i think the isolate module handles cgroups
-    # # cgroup setup for isolate
-    # echo "+cpuset +memory" > /sys/fs/cgroup/cgroup.subtree_control
-    # mkdir -p /sys/fs/cgroup/isolate
-    # echo "+cpuset +memory" > /sys/fs/cgroup/isolate/cgroup.subtree_control
-    # mkdir -p /run/isolate/locks
+    systemd.services.isolate-setup = lib.mkIf (cfg.fixEnvironment != "disabled") {
+      description = "Setup cgroups and environment for isolate";
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      path = [ "/run/current-system/sw" ];
 
-    # retrieved from old RCS
-    script = ''
-      # check environment
-      echo ">>> FIRECRACKER PRE-FIX ISSUES:"
-      ${pkgs.isolate}/bin/isolate-check-environment -e || true
-      echo ">>> FIRECRACKER POST-FIX ISSUES:"
-      if ! ${pkgs.isolate}/bin/isolate-check-environment; then
-        echo "NOTE: isolate-check-environment returned non-zero value: $?";
-        echo "NOTE: this could be because the script cannot detect if the CPU"
-        echo "      has both P & E cores, in which case this can be ignored."
-      fi
-    '';
+      # if verbose, the additional script logic is added to run a
+      # second pass for debugging purposes.
+      script = ''
+        # check environment
+        echo ">>> FIRECRACKER PRE-FIX ISSUES:"
+        ${pkgs.isolate}/bin/isolate-check-environment -e || true
 
-    after = [
-      "systemd-cgroupv2-setup.service"
-      "systemd-sysctl.service"
-      "local-fs.target"
-    ];
-    requires = [
-      "systemd-sysctl.service"
-    ];
+        ${lib.optionalString (cfg.fixEnvironment == "verbose") ''
+          echo ">>> FIRECRACKER POST-FIX ISSUES:"
+          if ! ${pkgs.isolate}/bin/isolate-check-environment; then
+            echo "NOTE: isolate-check-environment returned non-zero value: $?";
+            echo "NOTE: this could be because the script cannot detect if the CPU"
+            echo "      has both P & E cores, in which case this can be ignored."
+          fi
+        ''}
+      '';
+
+      after = [
+        "systemd-cgroupv2-setup.service"
+        "systemd-sysctl.service"
+        "local-fs.target"
+      ];
+      requires = [
+        "systemd-sysctl.service"
+      ];
+    };
   };
 }

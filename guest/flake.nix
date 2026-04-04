@@ -11,11 +11,11 @@
       pkgs = nixpkgs.legacyPackages.${system};
     in
     {
-
       nixosConfigurations.firecracker = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [
           {
+            isolate.enable = true;
             firecracker.kernel.enable = true;
             firecracker.disk-image.enable = true;
             firecracker.vm-config.enable = true;

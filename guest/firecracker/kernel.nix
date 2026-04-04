@@ -1,4 +1,9 @@
-{ pkgs, lib, ... }:
+{
+  pkgs,
+  lib,
+  config,
+  ...
+}:
 let
   # this is specifically for the 6.1.155 version which is pretty recent as of 2026-04-01
   version = "6.1.155";
@@ -14,6 +19,8 @@ let
   };
 
   arch = pkgs.stdenv.hostPlatform.linuxArch;
+
+  cfg = config.firecracker.kernel;
 in
 {
   options.firecracker.kernel = {
@@ -30,7 +37,7 @@ in
     };
   };
 
-  config.firecracker.kernel = {
+  config.firecracker.kernel = lib.mkIf cfg.enable {
     package = pkgs.fetchurl (
       kernelByArch.${arch} or (throw "Unsupported host platform arch for kernel: ${arch}")
     );

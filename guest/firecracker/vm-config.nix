@@ -12,6 +12,11 @@ let
   cfg = config.firecracker.vm-config;
 in
 {
+  imports = [
+    ./kernel.nix
+    ./disk-image.nix
+  ];
+
   options.firecracker.vm-config = {
     enable = lib.mkOption {
       type = lib.types.bool;
@@ -64,7 +69,7 @@ in
     # kernel path, kernel init param, rootfs path, and initrd path can all be generated
   };
 
-  config.firecracker.vm-config = {
+  config.firecracker.vm-config = lib.mkIf cfg.enable {
     package = pkgs.writeText "vm-config.json" (
       builtins.toJSON (
         {
