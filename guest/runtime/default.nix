@@ -6,7 +6,7 @@
 }:
 let
   cfg = config.worker-runtime;
-  guestPath = ./guest.js;
+  guestPath = ./guest-bin;
 in
 {
 
@@ -22,7 +22,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    environment.etc."guest.js".source =
+    environment.etc."guest-bin".source =
       if builtins.pathExists guestPath then
         guestPath
       else
@@ -35,6 +35,7 @@ in
       description = "Spawn worker runtime process";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
+        ExecStart = "/etc/guest-bin";
         Restart = "always";
         RestartSec = "1s";
       };
@@ -42,9 +43,6 @@ in
       after = [
         "worker-socket-bridge.service"
       ];
-      script = ''
-        bun run /etc/guest.js 
-      '';
     };
 
     systemd.services.worker-socket-bridge = {
