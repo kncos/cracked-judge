@@ -86,6 +86,13 @@
         enable = true;
         wantedBy = [ "multi-user.target" ];
       };
+      # still running these, removing modprobe services can shave
+      # off 200ms+, figure out how to actually disable this
+      "modprobe@.service" = {
+        enable = false;
+        mask = true;
+        wantedBy = lib.mkForce [ ];
+      };
     };
     targets = {
       hibernate.enable = false;

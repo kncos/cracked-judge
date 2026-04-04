@@ -12,25 +12,25 @@
       lib = pkgs.lib;
     in
     {
-      packages.${system} = {
-        # Accessing the build artifacts directly from the evaluated config
-        # rootfs-tar = self.nixosConfigurations.my-guest.config.system.build.tarball;
 
-        # This is cleaner: The 'bundle' logic is now a standalone package
-        # that takes the 'toplevel' (the built system) as an input.
-        firecracker-bundle = pkgs.symlinkJoin {
-          name = "firecracker-bundle";
-          paths = [
-            (import ./firecracker/disk-image.nix)
-            {
-              inherit pkgs lib;
-            }
-            (import ./firecracker/vm-config.nix)
-            { inherit pkgs lib; }
-            (import ./firecracker/kernel.nix)
-            { inherit pkgs lib; }
-          ];
-        };
+      nixosConfigurations.firecracker = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          {
+            firecracker.kernel.enable = true;
+            firecracker.disk-image.enable = true;
+            firecracker.vm-config.enable = true;
+          }
+          ./firecracker/firecracker.nix
+          ./firecracker/isolate.nix
+          ./firecracker/disk-image.nix
+          ./firecracker/vm-config.nix
+          ./firecracker/kernel.nix
+        ];
+      };
+
+      packages.${system} = {
+        firecracker-bundle = self.nixosConfigurations.firecracker.config.firecracker.vm-config.package;
 
         default = self.packages.${system}.firecracker-bundle;
       };
