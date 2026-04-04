@@ -3,7 +3,6 @@ mkosi.output
 linux-*
 mkosi.cache
 fc.log
-firecracker
 kernel-tmp-*
 vmlinux-*
 rootfs.ext4
@@ -13,3 +12,4 @@ guest.js
 host.js
 todo.md
 var.img
+vmroot
