@@ -12,13 +12,14 @@
       pkgs = import nixpkgs { inherit system; };
     in
     {
-      devShells.${system}.default = pkgs.mkShell {
-        buildInputs = with pkgs; [
-          bun
+      packages.${system}.default = pkgs.writeShellApplication {
+        name = "build-typescript-programs";
+        runtimeInputs = with pkgs; [
           firecracker
+          bun
         ];
-        shellHook = ''
-          echo "Entered nix dev shell"
+        text = ''
+          bun run build
         '';
       };
     };
