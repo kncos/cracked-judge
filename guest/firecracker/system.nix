@@ -43,6 +43,8 @@
       vim
       file
       htop
+      bun
+      socat
     ];
   };
 

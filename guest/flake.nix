@@ -1,4 +1,3 @@
-# guest/flake.nix
 {
   description = "Guest VM nixos config";
 
@@ -15,37 +14,18 @@
         inherit system;
         modules = [
           {
-            isolate.enable = true;
-            firecracker.kernel.enable = true;
-            firecracker.disk-image.enable = true;
-            firecracker.vm-config.enable = true;
+            firecracker.all.enable = true;
             firecracker.vm-config.rootfsPath = "rootfs.ext4";
             firecracker.vm-config.kernelPath = "vmlinux";
+            environment.etc."guest.js".source = ./guest.js;
           }
-          ./firecracker/firecracker.nix
-          ./firecracker/isolate.nix
-          ./firecracker/disk-image.nix
-          ./firecracker/vm-config.nix
-          ./firecracker/kernel.nix
+          ./firecracker
+          ./runtime
         ];
       };
 
       packages.${system} = {
-        # firecracker-bundle = self.nixosConfigurations.firecracker.config.firecracker.vm-config.package;
-        firecracker-bundle =
-          let
-            fc = self.nixosConfigurations.firecracker.config.firecracker;
-            kernel = fc.kernel.package;
-            config = fc.vm-config.package;
-            rootfs = fc.disk-image.package + "/nixos.img";
-          in
-          pkgs.runCommand "firecracker-bundle" { } ''
-            mkdir -p $out
-            cp "${kernel}" $out/vmlinux
-            cp "${config}" $out/vm-config.json
-            cp "${rootfs}" $out/rootfs.ext4
-          '';
-
+        firecracker-bundle = self.nixosConfigurations.firecracker.config.firecracker.all.bundle;
         default = self.packages.${system}.firecracker-bundle;
       };
     };

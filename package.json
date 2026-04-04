@@ -4,7 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "postinstall": "bun2nix -o bun.nix",
+    "build": "bun run build:host;bun run build:guest",
+    "build:host": "bun build --target=bun --outfile=host.js src/host.ts",
+    "build:guest": "bun build --target=bun --outfile=guest/runtime/guest.js src/guest/index.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
