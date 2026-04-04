@@ -1,3 +1,4 @@
+# derivation to fetch the firecracker kernel
 { pkgs, ... }:
 let
   # NOTE: changing the version requires the sha256 hashes to be updated
@@ -14,10 +15,9 @@ let
   };
 
   arch = pkgs.stdenv.hostPlatform.linuxArch;
-  kernel = pkgs.fetchurl (
-    kernelByArch.${arch} or (throw "Unsupported host platform arch for kernel: ${arch}")
-  );
 in
 {
-  firecrackerKernel = kernel;
+  firecrackerKernel = pkgs.fetchurl (
+    kernelByArch.${arch} or (throw "Unsupported host platform arch for kernel: ${arch}")
+  );
 }

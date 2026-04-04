@@ -1,5 +1,5 @@
 # guest/targets/firecracker.nix
-{ pkgs, lib, nixosConfig, ... }:
+{ pkgs, lib, ... }:
 {
   boot.loader.grub.enable = false;
   boot.kernel.enable = false;
