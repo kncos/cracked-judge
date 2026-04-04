@@ -90,7 +90,6 @@
       # off 200ms+, figure out how to actually disable this
       "modprobe@.service" = {
         enable = false;
-        mask = true;
         wantedBy = lib.mkForce [ ];
       };
     };

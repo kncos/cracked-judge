@@ -5,10 +5,10 @@
   ...
 }:
 let
-  kernelPath = config.firecracker.kernel.package;
-  rootfsPath = "${config.firecracker.disk-image.package}/nixos.img";
+  nixKernelPath = config.firecracker.kernel.package;
+  nixRootfsPath = "${config.firecracker.disk-image.package}/nixos.img";
+  nixInitrdPath = config.system.build.initialRamdisk or null;
   kernelInitParam = "${config.system.build.toplevel}/init";
-  initrdPath = config.system.build.initialRamdisk or null;
   cfg = config.firecracker.vm-config;
 in
 {
@@ -43,6 +43,18 @@ in
       description = "Whether or not to use NixOS's initrd with firecracker. no-op if initrd disabled in Nix system cfg";
     };
 
+    rootfsPath = lib.mkOption {
+      type = lib.types.str;
+      default = nixRootfsPath;
+      description = "Path to rootfs image. If omitted, uses the path to the rootfs image in /nix/store, but makes it readonly";
+    };
+
+    kernelPath = lib.mkOption {
+      type = lib.types.str;
+      default = nixKernelPath;
+      description = "Path to kernel binary. If omitted, uses the path to the kernel image in /nix/store";
+    };
+
     package = lib.mkOption {
       type = lib.types.package;
       readOnly = true;
@@ -58,7 +70,7 @@ in
         {
           boot-source = {
             # this should be a firecracker upstream kernel with no modules
-            kernel_image_path = "${kernelPath}";
+            kernel_image_path = "${cfg.kernelPath}";
             # We don't specify nix boot args because firecracker is the bootloader
             boot_args = "console=ttyS0 reboot=k panic=1 pci=off root=/dev/vda rw init=${kernelInitParam}";
           }
@@ -66,14 +78,14 @@ in
           # It loads kernel modules, starts udev, mounts filesytems, runs fsck, handles luks/raid,
           # and handles hibernate resume. But for firecracker, we don't need any of that,
           # so initrd can be skipped
-          // pkgs.lib.optionalAttrs (cfg.useInitrd && initrdPath != null) {
-            initrd_path = initrdPath;
+          // pkgs.lib.optionalAttrs (cfg.useInitrd && nixInitrdPath != null) {
+            initrd_path = nixInitrdPath;
           };
           # TODO: since this is not readonly it actually modifies the nixos.img that is in /nix/store
           drives = [
             {
               drive_id = "rootfs";
-              path_on_host = "${rootfsPath}";
+              path_on_host = "${cfg.rootfsPath}";
               is_root_device = true;
               is_read_only = false;
             }
