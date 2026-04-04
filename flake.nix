@@ -3,10 +3,15 @@
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
+    guest-flake.url = "path:./guest";
   };
 
   outputs =
-    { self, nixpkgs }:
+    {
+      self,
+      nixpkgs,
+      guest-flake,
+    }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
@@ -14,14 +19,11 @@
         firecracker
         bun
       ];
+      guestCfg = guest-flake.nixosConfigurations.firecracker.config;
     in
     {
-      packages.${system}.default = pkgs.writeShellApplication {
-        name = "build-typescript-programs";
-        runtimeInputs = deps;
-        text = ''
-          bun run build
-        '';
+      packages.${system} = {
+
       };
 
       devShells.${system}.default = pkgs.mkShell {

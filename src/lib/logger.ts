@@ -1,14 +1,17 @@
 import pino from "pino";
+import pretty from "pino-pretty";
 
-export const baseLogger = pino({
-  level: "trace",
-  transport: {
-    target: "pino-pretty",
-    options: {
-      colorize: true,
-    },
-  },
+const prettyStream = pretty({
+  colorize: true,
+  sync: false,
 });
+
+export const baseLogger = pino(
+  {
+    level: "trace",
+  },
+  prettyStream,
+);
 
 //export const baseLogger = pino(
 //  {

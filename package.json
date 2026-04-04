@@ -6,7 +6,7 @@
   "scripts": {
     "build": "bun run build:host;bun run build:guest",
     "build:host": "bun build --target=bun --outfile=host.js src/host.ts",
-    "build:guest": "bun build --target=bun --outfile=guest/runtime/guest.js src/guest/index.ts",
+    "build:guest": "bun build --compile --minify --sourcemap src/guest/index.ts --outfile guest/runtime/guest-bin",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },

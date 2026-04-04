@@ -17,6 +17,7 @@
             firecracker.all.enable = true;
             firecracker.vm-config.rootfsPath = "rootfs.ext4";
             firecracker.vm-config.kernelPath = "vmlinux";
+            firecracker.vm-config.socketPath = "/run/v.sock";
             worker-runtime.enable = true;
           }
           ./firecracker
