@@ -45,7 +45,7 @@ in
         mkdir -p $out
         cp "${kernel}" $out/vmlinux
         cp "${vmcfg}" $out/vm-config.json
-        cp "${rootfs}" $out/rootfs.ext4
+        cp "${rootfs}/nixos.img" $out/rootfs.ext4
       '';
   };
 }

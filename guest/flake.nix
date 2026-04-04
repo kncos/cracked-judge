@@ -17,7 +17,7 @@
             firecracker.all.enable = true;
             firecracker.vm-config.rootfsPath = "rootfs.ext4";
             firecracker.vm-config.kernelPath = "vmlinux";
-            environment.etc."guest.js".source = ./guest.js;
+            worker-runtime.enable = true;
           }
           ./firecracker
           ./runtime
@@ -25,7 +25,7 @@
       };
 
       packages.${system} = {
-        firecracker-bundle = self.nixosConfigurations.firecracker.config.firecracker.all.bundle;
+        firecracker-bundle = self.nixosConfigurations.firecracker.config.firecracker.all.package;
         default = self.packages.${system}.firecracker-bundle;
       };
     };

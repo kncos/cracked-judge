@@ -8,8 +8,6 @@ vmlinux-*
 rootfs.ext4
 .mkosi_hashtmp.sh
 build-tmp-*
-guest.js
-host.js
 todo.md
 var.img
 vmroot
