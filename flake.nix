@@ -27,15 +27,17 @@
     let
       system = "x86_64-linux";
       pkgs = nixpkgs.legacyPackages.${system};
-      mkDerivation = bun2nix.lib.${system}.mkDerivation;
+      bun2nixPkg = bun2nix.packages.${system}.default;
     in
     {
       packages.${system} = {
-        host = mkDerivation {
+        host = bun2nixPkg.mkDerivation {
           pname = "crackedjudge-host";
           version = "0.1.0";
           src = ./.;
-          bunNix = ./bun.nix;
+          bunDeps = bun2nixPkg.fetchBunDeps {
+            bunNix = ./bun.nix;
+          };
           module = "src/host.ts";
           buildArgs = [
             "--target=bun"
@@ -43,12 +45,14 @@
           ];
         };
 
-        guest = mkDerivation {
+        guest = bun2nixPkg.mkDerivation {
           pname = "crackedjudge-guest";
           version = "0.1.0";
           src = ./.;
-          bunNix = ./bun.nix;
-          module = "src/guest.ts";
+          bunDeps = bun2nixPkg.fetchBunDeps {
+            bunNix = ./bun.nix;
+          };
+          module = "guest/index.ts";
           buildArgs = [
             "--target=bun"
             "--outfile=guest.js"
@@ -61,7 +65,7 @@
       devShells.${system}.default = pkgs.mkShell {
         packages = with pkgs; [
           bun
-          bun2nix.packages.${system}.default
+          bun2nixPkg
         ];
       };
     };
