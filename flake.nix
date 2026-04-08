@@ -28,12 +28,11 @@
     let
       system = "x86_64-linux";
       # see: https://nix-community.github.io/bun2nix/overlay.html
-      # adds bun2nix binary to pkgs, may or may not be helpful
+      # adds bun2nix binary to pkgs
       pkgs = import nixpkgs {
         inherit system;
         overlays = [ self.inputs.bun2nix.overlays.default ];
       };
-      # bun2nix = self.inputs.bun2nix.packages.x86_64-linux.bun2nix;
     in
     {
 
@@ -45,10 +44,8 @@
             firecracker.vm-config.rootfsPath = "rootfs.ext4";
             firecracker.vm-config.kernelPath = "vmlinux";
             firecracker.vm-config.socketPath = "/run/v.sock";
-            worker-runtime.enable = true;
           }
           ./nix/firecracker
-          ./nix/worker-runtime
         ];
       };
 
@@ -57,6 +54,8 @@
           fc = self.nixosConfigurations.firecracker;
         in
         {
+
+          firecracker = fc.config.firecracker.all.package;
 
           host = pkgs.bun2nix.mkDerivation {
             src = ./.;

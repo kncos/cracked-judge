@@ -14,6 +14,7 @@ in
     ./disk-image.nix
     ./kernel.nix
     ./vm-config.nix
+    ./worker-runtime.nix
   ];
 
   options.firecracker.all = {
@@ -34,6 +35,7 @@ in
     isolate.enable = true;
     firecracker.kernel.enable = true;
     firecracker.vm-config.enable = true;
+    firecracker.worker-runtime.enable = true;
 
     firecracker.all.package =
       let

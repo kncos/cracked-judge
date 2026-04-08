@@ -5,37 +5,49 @@
   ...
 }:
 let
-  cfg = config.worker-runtime;
-  guestPath = ./guest-bin;
+  cfg = config.firecracker.worker-runtime;
 in
 {
-
-  options.worker-runtime = {
+  options.firecracker.worker-runtime = {
     enable = lib.mkOption {
       type = lib.types.bool;
       default = false;
-      description = ''
-        whether or not to include the worker runtime in the resulting system
-        and the associated systemd service that launches it
-      '';
+      description = "Installs firecracker worker runtime + associated services";
+    };
+
+    package = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      readOnly = true;
+      default = null;
+      description = "Derivation for worker runtime binary";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    environment.etc."guest-bin".source =
-      if builtins.pathExists guestPath then
-        guestPath
-      else
-        throw ''
-          ERROR: The file '${toString guestPath}' does not exist.
-          Did you forget to use `bun run build:guest` first?
-        '';
+    firecracker.worker-runtime = {
+      package = pkgs.bun2nix {
+        pname = "worker-runtime";
+        version = "0.1";
+
+        src = ./.;
+
+        module = "src/guest/index.ts";
+
+        bunDeps = pkgs.bun2nix.fetchBunDeps {
+          bunNix = ../../bun.nix;
+        };
+      };
+    };
+
+    environment.systemPackages = [
+      cfg.package
+    ];
 
     systemd.services.worker-runtime = {
       description = "Spawn worker runtime process";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        ExecStart = "/etc/guest-bin";
+        ExecStart = "${cfg.package}/bin/worker-runtime";
         Restart = "always";
         RestartSec = "1s";
       };
