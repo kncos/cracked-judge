@@ -4,6 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
+    "postinstall": "bun2nix -o bun.nix",
     "build": "bun run build:host;bun run build:guest",
     "build:host": "bun build --target=bun --outfile=host.js src/host.ts",
     "build:guest": "bun build --compile --minify --sourcemap src/guest/index.ts --outfile guest/runtime/guest-bin",
