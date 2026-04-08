@@ -1,13 +1,26 @@
 import Redis from "ioredis";
-import { createInterface } from "node:readline";
+import { readFileSync } from "node:fs";
+import { parseArgs } from "util";
+import z from "zod";
 import { baseLogger } from "./lib/logger";
 import { tryCatch } from "./lib/utils";
 import { judgeClient } from "./server/client";
 import { Server } from "./server/server";
 import { createVmPool } from "./vm/orchestrator";
 
-const main = async () => {
+const TOTAL_JOBS = 5;
+const TIMEOUT_MS = 60_000;
+
+const zConfig = z.object({});
+
+const main = async (config?: z.infer<typeof zConfig>) => {
   const logger = baseLogger.child({}, { msgPrefix: "[HOST] " });
+
+  if (config) {
+    logger.info({ config }, "Loaded config");
+  } else {
+    logger.info("No config provided");
+  }
 
   const redis = new Redis();
   await redis.flushall();
@@ -16,62 +29,42 @@ const main = async () => {
   const orchestrator = await createVmPool();
   logger.info("Created VM pool");
 
-  const rl = createInterface({
-    input: process.stdin,
-  });
-  logger.info("Created stdin interface");
-
   await using _server = await Server.create();
   await Bun.sleep(100);
-
-  const { promise: isDeadPromise, resolve } = Promise.withResolvers();
 
   const cleanup = async () => {
     logger.info("Cleaning up index.ts redis connection");
     redis.disconnect();
-    logger.info("Closing file descriptors");
-    rl.close();
     logger.info("Closing VM pool");
     await orchestrator.drain();
     await orchestrator.clear();
     logger.info("Host cleanup has completed");
-    resolve();
   };
 
-  logger.info("Ready to accept commands...");
+  logger.info("Starting job submissions...");
 
-  // eslint-disable-next-line @typescript-eslint/no-misused-promises
-  rl.on("line", async (line) => {
-    const segments = line
-      .trim()
-      .split(" ")
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+  const timeout = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      logger.warn("60s timeout reached, shutting down");
+      resolve();
+    }, TIMEOUT_MS);
+  });
 
-    // prints
-    console.log("console.log:", segments);
-    logger.info("still works?");
-
-    if (segments.length === 0) {
-      return;
-    }
-
-    if (segments[0] === "exit") {
-      await cleanup();
-    } else if (segments[0] === "submit") {
-      const txt = segments.slice(1).join(" ").trim();
-      if (!txt) {
-        logger.error("Must specify text for job submission");
-      }
+  const runJobs = async () => {
+    for (let n = 1; n <= TOTAL_JOBS; n++) {
+      const txt = `job ${n}`;
+      logger.info(`Submitting: "${txt}"`);
 
       const vm = await orchestrator.acquire();
       const file = new File([txt], "submission.cpp");
       const { data: iter, error } = await tryCatch(
         judgeClient.submit({ lang: "cpp", file }),
       );
+
       if (error) {
-        logger.error(error, "failed to submit");
-        return;
+        logger.error(error, `Failed to submit job ${n}`);
+        await orchestrator.release(vm);
+        continue;
       }
 
       for await (const val of iter) {
@@ -79,18 +72,33 @@ const main = async () => {
         console.log(JSON.stringify(val, null, 2));
         console.log("--------");
       }
-      await orchestrator.release(vm);
-    } else if (segments[0] === "view") {
-      const res = await redis.lrange("script", 0, -1);
-      logger.info({ res }, "View Result");
-    } else {
-      logger.warn({ segments }, "Unknown command");
-    }
-  });
 
-  process.on("SIGINT", () => void cleanup());
-  await isDeadPromise;
+      await orchestrator.release(vm);
+      logger.info(`Completed job ${n}/${TOTAL_JOBS}`);
+    }
+
+    logger.info("All jobs completed");
+  };
+
+  await Promise.race([runJobs(), timeout]);
+
+  await cleanup();
 };
 
-// satisfy Bun2Nix no top level await
-void main();
+const { values } = parseArgs({
+  args: Bun.argv,
+  options: {
+    config: {
+      type: "string",
+    },
+  },
+  strict: true,
+});
+
+const { config } = values;
+if (config) {
+  const parsedConfig = zConfig.parse(JSON.parse(readFileSync(config, "utf-8")));
+  void main(parsedConfig);
+} else {
+  void main();
+}

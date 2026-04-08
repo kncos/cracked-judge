@@ -50,6 +50,18 @@
         ];
       };
 
+      host = pkgs.bun2nix.mkDerivation {
+        src = ./.;
+        pname = "crackedjudge-host";
+        version = "0.1";
+
+        bunDeps = pkgs.bun2nix.fetchBunDeps {
+          bunNix = ./bun.nix;
+        };
+
+        module = "src/host.ts";
+      };
+
       packages.${system} =
         let
           fc = self.nixosConfigurations.firecracker;
@@ -57,18 +69,19 @@
         {
 
           firecracker = fc.config.firecracker.all.package;
-          host = pkgs.bun2nix.mkDerivation {
-            src = ./.;
-            pname = "crackedjudge-host";
-            version = "0.1";
+          hostRuntime = pkgs.writeShellApplication {
+            name = "run-orchestrator";
 
-            bunDeps = pkgs.bun2nix.fetchBunDeps {
-              bunNix = ./bun.nix;
-            };
+            runtimeInputs = with pkgs; [
+              firecracker
+            ];
 
-            module = "src/host.ts";
+            text = ''
+              #!/bin/sh
+              BASE=$(mktemp -d /tmp/firecracker-base-XXXXXXXX/)
+              mount --bind 
+            '';
           };
         };
-
     };
 }
