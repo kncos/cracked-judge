@@ -57,7 +57,6 @@
         {
 
           firecracker = fc.config.firecracker.all.package;
-
           host = pkgs.bun2nix.mkDerivation {
             src = ./.;
             pname = "crackedjudge-host";
