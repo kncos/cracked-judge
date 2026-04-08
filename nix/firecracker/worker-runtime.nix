@@ -16,20 +16,19 @@ in
     };
 
     package = lib.mkOption {
-      type = lib.types.nullOr lib.types.package;
+      type = lib.types.package;
       readOnly = true;
-      default = null;
       description = "Derivation for worker runtime binary";
     };
   };
 
   config = lib.mkIf cfg.enable {
     firecracker.worker-runtime = {
-      package = pkgs.bun2nix {
+      package = pkgs.bun2nix.mkDerivation {
         pname = "worker-runtime";
         version = "0.1";
 
-        src = ./.;
+        src = ../../.;
 
         module = "src/guest/index.ts";
 

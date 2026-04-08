@@ -29,7 +29,7 @@
       system = "x86_64-linux";
       # see: https://nix-community.github.io/bun2nix/overlay.html
       # adds bun2nix binary to pkgs
-      overlays = import ./nix/overlays.nix;
+      overlays = import ./nix/overlays.nix { inherit self; };
       pkgs = import nixpkgs {
         inherit system overlays;
       };
