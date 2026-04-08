@@ -1,6 +1,6 @@
 {
   pkgs,
-  system,
+  arch,
   ...
 }:
 let
@@ -17,5 +17,4 @@ let
     };
   };
 in
-pkgs.fetchurl
-  kernelByArch.${system} or (throw "Unsupported host platform arch for kernel: ${system}")
+pkgs.fetchurl kernelByArch.${arch} or (throw "Unsupported host platform arch for kernel: ${arch}")

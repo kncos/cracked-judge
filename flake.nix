@@ -35,22 +35,30 @@
       };
     in
     {
-      nixosConfigurations.firecracker = nixpkgs.lib.nixosSystem {
-        inherit system;
-        modules = [
-          {
-            nixpkgs.overlays = overlays;
-            firecracker.all.enable = true;
-          }
-          ./nix/firecracker
-        ];
+
+      nixosConfigurations = {
+        firecracker = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            {
+              nixpkgs.overlays = overlays;
+              firecracker.all.enable = true;
+            }
+            ./nix/firecracker
+          ];
+        };
       };
 
       rootfs = import ./nix/pkgs/fc-rootfs.nix {
         inherit pkgs;
+        # note, change back to nixpkgs if this doesn't work
         nixosConfig = self.nixosConfigurations.firecracker.config;
       };
-      vmlinux = import ./nix/pkgs/fc-kernel.nix { inherit pkgs system; };
+
+      vmlinux = import ./nix/pkgs/fc-kernel.nix {
+        inherit pkgs system;
+        arch = "x86_64";
+      };
       vm-config = import ./nix/pkgs/vm-config.nix { inherit pkgs; };
       # directory with all of the stuff the firecracker process itself needs.
       # if we had an initrd we would also include that, but its unused now
@@ -68,26 +76,8 @@
         depsRoot = self.firecracker-bundle;
       };
 
-      packages.${system} =
-        let
-          fc = self.nixosConfigurations.firecracker;
-        in
-        {
-
-          firecracker = fc.config.firecracker.all.package;
-          hostRuntime = pkgs.writeShellApplication {
-            name = "run-orchestrator";
-
-            runtimeInputs = with pkgs; [
-              firecracker
-            ];
-
-            text = ''
-              #!/bin/sh
-              BASE=$(mktemp -d /tmp/firecracker-base-XXXXXXXX/)
-              mount --bind 
-            '';
-          };
-        };
+      packages.${system} = {
+        firecracker = self.firecracker-bundle;
+      };
     };
 }

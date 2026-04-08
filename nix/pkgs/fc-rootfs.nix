@@ -1,6 +1,5 @@
 {
   pkgs,
-  lib,
   nixosConfig,
   diskSize ? "auto",
   additionalSpace ? "512M",
@@ -11,7 +10,8 @@ in
 # see: https://ryantm.github.io/nixpkgs/builders/images/makediskimage/
 # see: https://ryantm.github.io/nixpkgs/builders/images/makediskimage/
 makeDiskImage {
-  inherit pkgs lib;
+  inherit pkgs;
+  lib = pkgs.lib;
   config = nixosConfig;
   inherit diskSize additionalSpace;
 

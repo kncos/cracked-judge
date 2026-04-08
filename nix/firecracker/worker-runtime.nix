@@ -14,28 +14,23 @@ in
       default = false;
       description = "Installs firecracker worker runtime + associated services";
     };
-
-    package = lib.mkOption {
-      type = lib.types.package;
-      readOnly = true;
-      description = "Derivation for worker runtime binary";
-    };
   };
 
   config = lib.mkIf cfg.enable {
-    firecracker.worker-runtime = import ../pkgs/guest-runtime.nix {
-      inherit pkgs;
-    };
 
-    environment.systemPackages = [
-      cfg.package
-    ];
+    environment.systemPackages =
+      let
+        runtime = import ../pkgs/guest-runtime.nix { inherit pkgs; };
+      in
+      [
+        runtime
+      ];
 
     systemd.services.worker-runtime = {
-      description = "Spawn worker runtime process";
+      description = "Spawn cj-guest worker runtime process";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        ExecStart = "${cfg.package}/bin/worker-runtime";
+        ExecStart = "cj-guest";
         Restart = "always";
         RestartSec = "1s";
       };
