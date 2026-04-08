@@ -1,32 +1,27 @@
+import { readFileSync } from "fs";
 import Redis from "ioredis";
-import { readFileSync } from "node:fs";
 import { parseArgs } from "util";
 import z from "zod";
+import { manualWhich } from "./lib/file-system/utils";
+import { CrackedError } from "./lib/judge-error";
 import { baseLogger } from "./lib/logger";
 import { tryCatch } from "./lib/utils";
 import { judgeClient } from "./server/client";
 import { Server } from "./server/server";
+import { zConfig } from "./vm/config";
 import { createVmPool } from "./vm/orchestrator";
 
 const TOTAL_JOBS = 5;
 const TIMEOUT_MS = 60_000;
 
-const zConfig = z.object({});
-
-const main = async (config?: z.infer<typeof zConfig>) => {
+const main = async (config: z.infer<typeof zConfig>) => {
   const logger = baseLogger.child({}, { msgPrefix: "[HOST] " });
-
-  if (config) {
-    logger.info({ config }, "Loaded config");
-  } else {
-    logger.info("No config provided");
-  }
 
   const redis = new Redis();
   await redis.flushall();
   logger.info("Started & Flushed redis");
 
-  const orchestrator = await createVmPool();
+  const orchestrator = await createVmPool(config);
   logger.info("Created VM pool");
 
   await using _server = await Server.create();
@@ -95,10 +90,16 @@ const { values } = parseArgs({
   strict: true,
 });
 
-const { config } = values;
-if (config) {
-  const parsedConfig = zConfig.parse(JSON.parse(readFileSync(config, "utf-8")));
-  void main(parsedConfig);
+const confPath =
+  values.config || manualWhich("host-config.json", [".", "/etc/crackedjudge"]);
+
+if (confPath !== null) {
+  const conf = readFileSync(confPath, "utf-8");
+  const parsedConf = zConfig.parse(JSON.parse(conf));
+  void main(parsedConf);
 } else {
-  void main();
+  throw new CrackedError("CONFIG_ERROR", {
+    message:
+      "No config path provided with --config, and no host-config.json found",
+  });
 }

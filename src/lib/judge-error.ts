@@ -19,6 +19,7 @@ export type CrackedErrorCode =
   | "FS_WRITE"
   | "FS_UNZIP"
   | "FS_DEPENDENCY_CHECK"
+  | "FS_TEMP_FILE"
   | "GUEST_COMPILE_FAILED"
   | "GUEST_RUN_FAILED"
   | "GUEST_MALFORMED_JOB"
@@ -34,6 +35,7 @@ export type CrackedErrorCode =
   | "VM_FILESYS"
   | "VM_POOL"
   | "VM_CREATE"
+  | "CONFIG_ERROR"
   | "API_INTERNAL_ERROR";
 
 export class CrackedError extends Error {

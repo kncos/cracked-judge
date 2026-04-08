@@ -1,11 +1,13 @@
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import { BindMount, OverlayMount } from "@/lib/file-system";
+import { TempFile } from "@/lib/file-system/file/temp-file";
 import { changePerms } from "@/lib/file-system/utils";
 import { createFirecrackerClient } from "@/lib/firecracker-api";
 import { CrackedError } from "@/lib/judge-error";
 import { baseLogger } from "@/lib/logger";
 import { createAsyncProc } from "@/lib/proc/async-proc";
 import { join } from "path";
+import type { HostConfig } from "./config";
 
 const logger = baseLogger.child({}, { msgPrefix: "[VM] " });
 const UID = "60000" as const;
@@ -17,9 +19,9 @@ class VM implements AsyncDisposable {
   private stack: AsyncDisposableStack = new AsyncDisposableStack();
   private readonly vmProcCmd: string[];
 
-  private readonly depsDir: string;
-  private readonly runDir: string;
-  private readonly jailDir: string;
+  // private readonly depsDir: string;
+  // private readonly runDir: string;
+  // private readonly jailDir: string;
 
   private readonly vmRunDir: string;
   private readonly vmDepsDir: string;
@@ -33,26 +35,29 @@ class VM implements AsyncDisposable {
 
   constructor(
     public readonly vmId: string,
-    public readonly vmRoot: string,
+    public readonly config: HostConfig,
   ) {
-    // host directories
-    this.depsDir = join(vmRoot, "base");
-    this.runDir = join(vmRoot, "run", vmId);
-    // jail directory where VM stuff goes
-    this.jailDir = join(vmRoot, "jail");
-    // directories inside vm chroot
-    this.vmRunDir = join(this.jailDir, "firecracker", vmId, "root", "run");
-    this.vmDepsDir = join(this.jailDir, "firecracker", vmId, "root", "base");
+    const {
+      jailerRoot,
+      hostRuntimeRoot,
+      jailerBinaryPath,
+      firecrackerBinaryPath,
+    } = config;
 
-    this.guestInitiatedSockPath = join(this.runDir, "v.sock_52");
-    this.hostInitiatedSockPath = join(this.runDir, "v.sock");
-    this.firecrackerSockPath = join(this.runDir, "firecracker.socket");
+    // directories inside vm chroot
+    this.vmRunDir = join(jailerRoot, "firecracker", vmId, "root", "run");
+    this.vmDepsDir = join(jailerRoot, "firecracker", vmId, "root", "base");
+
+    // directories on host where sockets can be listened
+    this.guestInitiatedSockPath = join(hostRuntimeRoot, "v.sock_52");
+    this.hostInitiatedSockPath = join(hostRuntimeRoot, "v.sock");
+    this.firecrackerSockPath = join(hostRuntimeRoot, "firecracker.socket");
 
     this.vmProcCmd = [
       //TODO: temp solution
-      join(vmRoot, "jailer"),
+      jailerBinaryPath,
       "--exec-file",
-      join(vmRoot, "firecracker"),
+      firecrackerBinaryPath,
       "--uid",
       UID,
       "--gid",
@@ -60,7 +65,7 @@ class VM implements AsyncDisposable {
       "--id",
       vmId,
       "--chroot-base-dir",
-      this.jailDir,
+      jailerRoot,
       "--",
       "--config-file",
       join("base", "vm-config.json"),
@@ -75,16 +80,23 @@ class VM implements AsyncDisposable {
 
     this.isCreated = true;
 
+    const { hostRuntimeRoot, depsRoot } = this.config;
+
     try {
       // we can place sockets in the host dir then bind mount them
       // into the vm's /run/ directory, as well as any other metadata
-      const run = new BindMount(this.runDir, this.vmRunDir, UID, GID);
+      const run = new BindMount(hostRuntimeRoot, this.vmRunDir, UID, GID);
       this.stack.use(run);
-      logger.debug("Created Bind Mount");
+      logger.debug("Created Bind Mount for VM runtime files");
+
+      // metadata allows the VM to access metadata about itself
+      const meta = new TempFile(join(this.vmRunDir, "meta"), vmId);
+      this.stack.use(meta);
+      logger.debug("Created metadata file containing VM id");
 
       // place dependencies in VM chroot dir using overlayfs so it can
       // modify them ephemerally without cloning the large dependencies in full
-      const deps = new OverlayMount(this.depsDir, this.vmDepsDir);
+      const deps = new OverlayMount(depsRoot, this.vmDepsDir);
       this.stack.use(deps);
       logger.debug("Created Overlay Mount");
 
@@ -174,11 +186,14 @@ class VM implements AsyncDisposable {
   }
 }
 
-export const createVm = async (props: { vmId?: string; vmRoot: string }) => {
+export const createVm = async (props: {
+  vmId?: string;
+  config: HostConfig;
+}) => {
   logger.debug("createVm Factory invoked");
-  const { vmId = crypto.randomUUID(), vmRoot } = props;
-  logger.debug({ vmId, vmRoot }, "Creating VM with params:");
-  const vm = new VM(vmId, vmRoot);
+  const { vmId = crypto.randomUUID(), config } = props;
+  logger.debug({ vmId, config }, "Creating VM with params:");
+  const vm = new VM(vmId, config);
   logger.debug("VM Constructor invoked");
   await vm.create();
   logger.debug("VM created");
