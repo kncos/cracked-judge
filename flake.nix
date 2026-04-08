@@ -29,9 +29,9 @@
       system = "x86_64-linux";
       # see: https://nix-community.github.io/bun2nix/overlay.html
       # adds bun2nix binary to pkgs
+      overlays = import ./nix/overlays.nix;
       pkgs = import nixpkgs {
-        inherit system;
-        overlays = [ self.inputs.bun2nix.overlays.default ];
+        inherit system overlays;
       };
     in
     {
@@ -40,6 +40,7 @@
         inherit system;
         modules = [
           {
+            nixpkgs.overlays = overlays;
             firecracker.all.enable = true;
             firecracker.vm-config.rootfsPath = "rootfs.ext4";
             firecracker.vm-config.kernelPath = "vmlinux";
