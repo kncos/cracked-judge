@@ -35,31 +35,18 @@
       };
     in
     {
-
       nixosConfigurations.firecracker = nixpkgs.lib.nixosSystem {
         inherit system;
         modules = [
           {
             nixpkgs.overlays = overlays;
             firecracker.all.enable = true;
-            firecracker.vm-config.rootfsPath = "rootfs.ext4";
-            firecracker.vm-config.kernelPath = "vmlinux";
-            firecracker.vm-config.socketPath = "/run/v.sock";
+            firecracker.vm-config.rootfsPath = "base/rootfs.ext4";
+            firecracker.vm-config.kernelPath = "base/vmlinux";
+            firecracker.vm-config.socketPath = "run/v.sock";
           }
           ./nix/firecracker
         ];
-      };
-
-      host = pkgs.bun2nix.mkDerivation {
-        src = ./.;
-        pname = "crackedjudge-host";
-        version = "0.1";
-
-        bunDeps = pkgs.bun2nix.fetchBunDeps {
-          bunNix = ./bun.nix;
-        };
-
-        module = "src/host.ts";
       };
 
       packages.${system} =

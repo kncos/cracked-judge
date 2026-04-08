@@ -23,19 +23,8 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    firecracker.worker-runtime = {
-      package = pkgs.bun2nix.mkDerivation {
-        pname = "worker-runtime";
-        version = "0.1";
-
-        src = ../../.;
-
-        module = "src/guest/index.ts";
-
-        bunDeps = pkgs.bun2nix.fetchBunDeps {
-          bunNix = ../../bun.nix;
-        };
-      };
+    firecracker.worker-runtime = import ../pkgs/guest-runtime.nix {
+      inherit pkgs;
     };
 
     environment.systemPackages = [
