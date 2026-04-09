@@ -5,7 +5,7 @@
 }:
 let
   nixSystem = import ./system.nix {
-    inherit nixpkgs system;
+    inherit pkgs nixpkgs system;
   };
 
   rootfs = import ./rootfs.nix {
@@ -20,6 +20,7 @@ let
 
   vmlinux = import ./kernel.nix {
     inherit pkgs;
+    arch = "x86_64";
   };
 in
 pkgs.runCommand "firecracker-guest-bundle" { } ''

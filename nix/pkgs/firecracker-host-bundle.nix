@@ -8,8 +8,8 @@ let
     inherit pkgs nixpkgs system;
   };
 
-  cj-host = import ./cj-host { inherit pkgs; };
-  host-config = import ./host-config {
+  cj-host = import ./cj-host.nix { inherit pkgs; };
+  host-config = import ./host-config.nix {
     inherit pkgs;
     # readonly for the host, it just makes overlay binds with this lower dir
     depsRoot = "${firecracker-guest-bundle}";
