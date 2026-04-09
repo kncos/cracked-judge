@@ -10,4 +10,4 @@ rootfs.ext4
 build-tmp-*
 todo.md
 var.img
-vmroot
+vmrootresult

@@ -39,7 +39,8 @@ export class HostFilesystem implements Disposable, AsyncDisposable {
       "rsync",
       "--sparse",
       "-a",
-      depsSource,
+      // trailing `/` ensures contents are copied
+      `${depsSource}/`,
       depsDir.dir, // target directory
     ];
     const proc = Bun.spawnSync(cmd);
