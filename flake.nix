@@ -36,48 +36,10 @@
     in
     {
 
-      nixosConfigurations = {
-        firecracker = nixpkgs.lib.nixosSystem {
-          inherit system;
-          modules = [
-            {
-              nixpkgs.overlays = overlays;
-              firecracker.all.enable = true;
-            }
-            ./nix/firecracker
-          ];
-        };
-      };
-
-      rootfs = import ./nix/pkgs/fc-rootfs.nix {
-        inherit pkgs;
-        # note, change back to nixpkgs if this doesn't work
-        nixosConfig = self.nixosConfigurations.firecracker.config;
-      };
-
-      vmlinux = import ./nix/pkgs/fc-kernel.nix {
-        inherit pkgs system;
-        arch = "x86_64";
-      };
-      vm-config = import ./nix/pkgs/vm-config.nix { inherit pkgs; };
-      # directory with all of the stuff the firecracker process itself needs.
-      # if we had an initrd we would also include that, but its unused now
-      firecracker-bundle = pkgs.runCommand "firecracker-bundle" { } ''
-        mkdir -p $out
-        cp "${self.vmlinux}" $out/vmlinux
-        cp "${self.vm-config}" $out/vm-config.json
-        cp "${self.rootfs}/nixos.img" $out/rootfs.ext4
-      '';
-
-      host-runtime = import ./nix/pkgs/host-runtime.nix { inherit pkgs; };
-      # just needs the root dir but for everything else the defaults are fine
-      hostConfig = import ./nix/pkgs/host-config.nix {
-        inherit pkgs;
-        depsRoot = self.firecracker-bundle;
-      };
-
       packages.${system} = {
-        firecracker = self.firecracker-bundle;
+        default = import ./nix/pkgs/firecracker-host-bundle.nix {
+          inherit pkgs nixpkgs system;
+        };
       };
     };
 }
