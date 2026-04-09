@@ -1,6 +1,5 @@
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import { BindMount, OverlayMount } from "@/lib/file-system";
-import { TempFile } from "@/lib/file-system/file/temp-file";
 import { changePerms } from "@/lib/file-system/utils";
 import { createFirecrackerClient } from "@/lib/firecracker-api";
 import { CrackedError } from "@/lib/judge-error";
@@ -14,44 +13,64 @@ const UID = "60000" as const;
 const GID = "60000" as const;
 
 class VM implements AsyncDisposable {
-  //private stack: AsyncDisposableStack;
-
   private stack: AsyncDisposableStack = new AsyncDisposableStack();
   private readonly vmProcCmd: string[];
 
-  // private readonly depsDir: string;
-  // private readonly runDir: string;
-  // private readonly jailDir: string;
-
-  private readonly vmRunDir: string;
-  private readonly vmDepsDir: string;
-
   private readonly guestInitiatedSockPath: string;
-  private readonly hostInitiatedSockPath: string;
+  // private readonly hostInitiatedSockPath: string;
   private readonly firecrackerSockPath: string;
 
   private isCreated: boolean = false;
   public isDestroyed: boolean = false;
 
+  createFilesystem = () => {};
+
   constructor(
     public readonly vmId: string,
     public readonly config: HostConfig,
   ) {
-    const {
-      jailerRoot,
-      hostRuntimeRoot,
-      jailerBinaryPath,
-      firecrackerBinaryPath,
-    } = config;
+    const { runtimeRoot, jailerBinaryPath, firecrackerBinaryPath } = config;
+    const jailerRoot = join(runtimeRoot, "jail");
 
-    // directories inside vm chroot
-    this.vmRunDir = join(jailerRoot, "firecracker", vmId, "root", "run");
-    this.vmDepsDir = join(jailerRoot, "firecracker", vmId, "root", "base");
+    // runtime bind mount for shared files like sockets
+    const hostRunDir = join(runtimeRoot, "run", vmId);
+    const vmRunDir = join(jailerRoot, "firecracker", vmId, "root", "run");
+    const runMount = new BindMount(hostRunDir, vmRunDir);
+    this.stack.use(runMount);
+    logger.debug("Created Bind Mount for VM runtime files");
+
+    // overlay mount to expose dependencies to the VM and allow it to
+    // write without modifying the originals. Prerequisite is that the
+    // deps were copied from `config.depsSource` to `{runtimeRoot}/deps`
+    // TODO: add a check here and throw an error if deps are not present
+    const hostDepsDir = join(runtimeRoot, "deps");
+    const vmDepsDir = join(jailerRoot, "firecracker", vmId, "root", "deps");
+    const depsMountUpperdir = join(runtimeRoot, vmId, "upper");
+    const depsMountWorkdir = join(runtimeRoot, vmId, "work");
+    const depsMount = new OverlayMount(
+      hostDepsDir,
+      vmDepsDir,
+      depsMountUpperdir,
+      depsMountWorkdir,
+    );
+    this.stack.use(depsMount);
+    logger.debug("Created Overlay Mount");
+
+    // change permissions in the overlay; this modifies the overlayfs layer
+    // and allows the VM uid/gid to access the appropriate files we have provided
+    changePerms({
+      path: vmDepsDir,
+      uid: UID,
+      gid: GID,
+      mod: "777",
+      recursive: true,
+    });
+    logger.debug("Changed perms of vm dependencies overlay");
 
     // directories on host where sockets can be listened
-    this.guestInitiatedSockPath = join(hostRuntimeRoot, "v.sock_52");
-    this.hostInitiatedSockPath = join(hostRuntimeRoot, "v.sock");
-    this.firecrackerSockPath = join(hostRuntimeRoot, "firecracker.socket");
+    this.guestInitiatedSockPath = join(hostRunDir, "v.sock_52");
+    // this.hostInitiatedSockPath = join(hostRunDir, "v.sock");
+    this.firecrackerSockPath = join(hostRunDir, "firecracker.socket");
 
     this.vmProcCmd = [
       //TODO: temp solution
@@ -68,7 +87,7 @@ class VM implements AsyncDisposable {
       jailerRoot,
       "--",
       "--config-file",
-      join("base", "vm-config.json"),
+      join("deps", "vm-config.json"),
     ];
   }
 
@@ -80,37 +99,7 @@ class VM implements AsyncDisposable {
 
     this.isCreated = true;
 
-    const { hostRuntimeRoot, depsRoot } = this.config;
-
     try {
-      // we can place sockets in the host dir then bind mount them
-      // into the vm's /run/ directory, as well as any other metadata
-      const run = new BindMount(hostRuntimeRoot, this.vmRunDir, UID, GID);
-      this.stack.use(run);
-      logger.debug("Created Bind Mount for VM runtime files");
-
-      // metadata allows the VM to access metadata about itself
-      const meta = new TempFile(join(this.vmRunDir, "meta"), vmId);
-      this.stack.use(meta);
-      logger.debug("Created metadata file containing VM id");
-
-      // place dependencies in VM chroot dir using overlayfs so it can
-      // modify them ephemerally without cloning the large dependencies in full
-      const deps = new OverlayMount(depsRoot, this.vmDepsDir);
-      this.stack.use(deps);
-      logger.debug("Created Overlay Mount");
-
-      // change permissions in the overlay; this modifies the overlayfs layer
-      // and allows the VM uid/gid to access the appropriate files we have provided
-      changePerms({
-        path: this.vmDepsDir,
-        uid: UID,
-        gid: GID,
-        mod: "777",
-        recursive: true,
-      });
-      logger.debug("Changed perms");
-
       const socketProc = await createAsyncProc({
         cmd: [
           "socat",
@@ -126,6 +115,7 @@ class VM implements AsyncDisposable {
       logger.debug("Created socket proc");
 
       const firecrackerSockPath = this.firecrackerSockPath;
+
       const vmProc = await createAsyncProc({
         cmd: this.vmProcCmd,
         // before destroying the VM, send the ctrl+alt+delete signal

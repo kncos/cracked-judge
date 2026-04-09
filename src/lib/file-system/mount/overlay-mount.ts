@@ -1,5 +1,6 @@
 import { CrackedError } from "@/lib/judge-error";
 import { tryCatchSync } from "@/lib/utils";
+import { RecursiveDir } from "../directory";
 import { TempDir } from "../directory/temp-directory";
 import { fsLogger, fsProcLogAndMaybeThrow, isMountpoint } from "../utils";
 import { BaseMount } from "./base-mount";
@@ -14,9 +15,35 @@ export class OverlayMount extends BaseMount {
       });
     }
 
-    const upperRes = tryCatchSync(() =>
-      this.stack.use(new TempDir({ template: "" })),
-    );
+    const cmd = [
+      "mount",
+      "-t",
+      "overlay",
+      "overlay",
+      "-o",
+      `lowerdir=${this.hostDir},upperdir=${this.upperDir},workdir=${this.workDir}`,
+      this.guestDir,
+    ];
+    const proc = Bun.spawnSync(cmd, { timeout: 1000 });
+    fsProcLogAndMaybeThrow(proc, cmd, "FS_OVERLAY_MOUNT", this.baseMountErr);
+  }
+
+  public readonly upperDir: string;
+  public readonly workDir: string;
+
+  constructor(
+    hostDir: string,
+    guestDir: string,
+    upperDir?: string,
+    workDir?: string,
+  ) {
+    super(hostDir, guestDir);
+
+    const upperRes = tryCatchSync(() => {
+      const upper = upperDir ? new RecursiveDir(upperDir) : new TempDir();
+      this.stack.use(upper);
+      return upper;
+    });
     if (upperRes.error) {
       const message = `${this.baseMountErr}: ${upperRes.error.message}`;
       fsLogger.error(message);
@@ -25,35 +52,22 @@ export class OverlayMount extends BaseMount {
         cause: upperRes.error,
       });
     }
+    this.upperDir = upperRes.data.dir;
 
-    const workspaceRes = tryCatchSync(() => this.stack.use(new TempDir()));
-    if (workspaceRes.error) {
-      const message = `${this.baseMountErr}: ${workspaceRes.error.message}`;
+    const workRes = tryCatchSync(() => {
+      const work = workDir ? new RecursiveDir(workDir) : new TempDir();
+      this.stack.use(work);
+      return work;
+    });
+    if (workRes.error) {
+      const message = `${this.baseMountErr}: ${workRes.error.message}`;
       fsLogger.error(message);
       throw new CrackedError("FS_OVERLAY_MOUNT", {
         message,
-        cause: workspaceRes.error,
+        cause: workRes.error,
       });
     }
-
-    const upper = upperRes.data.dir;
-    const workspace = workspaceRes.data.dir;
-
-    const cmd = [
-      "mount",
-      "-t",
-      "overlay",
-      "overlay",
-      "-o",
-      `lowerdir=${this.hostDir},upperdir=${upper},workdir=${workspace}`,
-      this.guestDir,
-    ];
-    const proc = Bun.spawnSync(cmd, { timeout: 1000 });
-    fsProcLogAndMaybeThrow(proc, cmd, "FS_OVERLAY_MOUNT", this.baseMountErr);
-  }
-
-  constructor(hostDir: string, guestDir: string) {
-    super(hostDir, guestDir);
+    this.workDir = workRes.data.dir;
 
     try {
       this.create();

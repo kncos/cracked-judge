@@ -13,8 +13,8 @@ let
     inherit pkgs;
     # readonly for the host, it just makes overlay binds with this lower dir
     depsRoot = "${firecracker-guest-bundle}";
-    jailerBinaryPath = "${pkgs.firecracker}/bin/jailer";
-    firecrackerBinaryPath = "${pkgs.firecracker}/bin/firecracker";
+    jailerBinaryPath = "${pkgs.pkgsStatic.firecracker}/bin/jailer";
+    firecrackerBinaryPath = "${pkgs.pkgsStatic.firecracker}/bin/firecracker";
   };
 in
 pkgs.runCommand "host-bundle" { } ''

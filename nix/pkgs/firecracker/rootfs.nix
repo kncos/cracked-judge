@@ -2,7 +2,7 @@
   pkgs,
   nixosConfig,
   diskSize ? "auto",
-  additionalSpace ? "512M",
+  additionalSpace ? "1024M",
 }:
 let
   makeDiskImage = import "${pkgs.path}/nixos/lib/make-disk-image.nix";

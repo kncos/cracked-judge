@@ -8,20 +8,26 @@ import { baseLogger } from "./lib/logger";
 import { tryCatch } from "./lib/utils";
 import { judgeClient } from "./server/client";
 import { Server } from "./server/server";
-import { zConfig } from "./vm/config";
+import { zHostConfig } from "./vm/config";
+import { HostFilesystem } from "./vm/fs-prep";
 import { createVmPool } from "./vm/orchestrator";
 
 const TOTAL_JOBS = 5;
 const TIMEOUT_MS = 60_000;
 
-const main = async (config: z.infer<typeof zConfig>) => {
+const main = async (config: z.infer<typeof zHostConfig>) => {
   const logger = baseLogger.child({}, { msgPrefix: "[HOST] " });
 
   const redis = new Redis();
   await redis.flushall();
   logger.info("Started & Flushed redis");
 
+  // this validates the config and copies the deps into their
+  // expected location
+  using _hostFs = new HostFilesystem(config);
+
   const orchestrator = await createVmPool(config);
+  console.log("GOT HERE");
   logger.info("Created VM pool");
 
   await using _server = await Server.create();
@@ -48,7 +54,7 @@ const main = async (config: z.infer<typeof zConfig>) => {
   const runJobs = async () => {
     for (let n = 1; n <= TOTAL_JOBS; n++) {
       const txt = `job ${n}`;
-      logger.info(`Submitting: "${txt}"`);
+      console.log(`Submitting: "${txt}"`);
 
       const vm = await orchestrator.acquire();
       const file = new File([txt], "submission.cpp");
@@ -57,6 +63,7 @@ const main = async (config: z.infer<typeof zConfig>) => {
       );
 
       if (error) {
+        console.log(`error: failed to submit job ${n}: ${error}`);
         logger.error(error, `Failed to submit job ${n}`);
         await orchestrator.release(vm);
         continue;
@@ -69,6 +76,7 @@ const main = async (config: z.infer<typeof zConfig>) => {
       }
 
       await orchestrator.release(vm);
+      console.log(`completed job ${n}/${TOTAL_JOBS}`);
       logger.info(`Completed job ${n}/${TOTAL_JOBS}`);
     }
 
@@ -85,9 +93,12 @@ const { values } = parseArgs({
   options: {
     config: {
       type: "string",
+      short: "c",
+      multiple: false,
     },
   },
   strict: true,
+  allowPositionals: true,
 });
 
 const confPath =
@@ -95,7 +106,7 @@ const confPath =
 
 if (confPath !== null) {
   const conf = readFileSync(confPath, "utf-8");
-  const parsedConf = zConfig.parse(JSON.parse(conf));
+  const parsedConf = zHostConfig.parse(JSON.parse(conf));
   void main(parsedConf);
 } else {
   throw new CrackedError("CONFIG_ERROR", {

@@ -1,5 +1,5 @@
 import * as Bun from "bun";
-import { statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { type CrackedErrorCode } from "../judge-error";
 import { baseLogger } from "../logger";
@@ -30,6 +30,15 @@ export const fsProcLogHelper = (
 
 export const fileExists = (path: string) =>
   statSync(path, { throwIfNoEntry: false }) !== undefined;
+
+export const dirInfo = (path: string): "nonexistant" | "empty" | "nonempty" => {
+  try {
+    const files = readdirSync(path);
+    return files.length === 0 ? "empty" : "nonempty";
+  } catch {
+    return "nonexistant";
+  }
+};
 
 /**
  * This utility returns the path to the first occurrence of the given file in the provided directories.

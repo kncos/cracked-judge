@@ -9,13 +9,6 @@ export class TempFile implements AsyncDisposable, Disposable {
     this.path = path;
 
     try {
-      const result = Bun.spawnSync(["touch", path], { timeout: 1000 });
-      fsProcLogAndMaybeThrow(
-        result,
-        ["touch", path],
-        "FS_TEMP_FILE",
-        `Failed to create temp file at ${path}`,
-      );
       writeFileSync(path, content);
       fsLogger.info(`TempFile created at ${path}`);
     } catch (e) {
