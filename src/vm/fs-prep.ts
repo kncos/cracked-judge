@@ -36,9 +36,10 @@ export class HostFilesystem implements Disposable, AsyncDisposable {
 
     this.stack.use(depsDir);
     const cmd = [
-      "cp",
-      "-r",
-      path.join(depsSource, "*"), // copy all files from depsSource to deps
+      "rsync",
+      "--sparse",
+      "-a",
+      depsSource,
       depsDir.dir, // target directory
     ];
     const proc = Bun.spawnSync(cmd);
@@ -46,9 +47,7 @@ export class HostFilesystem implements Disposable, AsyncDisposable {
       proc,
       cmd,
       "FS_WRITE",
-      "Failed to copy files from dependencies source to runtime deps dir:\n" +
-        `  From: ${path.join(depsSource, "*")}` +
-        `  To: ${depsDir.dir}`,
+      "Failed to copy files from dependencies source to runtime deps dir:",
     );
   }
 

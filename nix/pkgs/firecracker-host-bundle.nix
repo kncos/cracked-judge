@@ -11,8 +11,8 @@ let
   cj-host = import ./cj-host.nix { inherit pkgs; };
   host-config = import ./host-config.nix {
     inherit pkgs;
-    # readonly for the host, it just makes overlay binds with this lower dir
-    depsRoot = "${firecracker-guest-bundle}";
+    # copied to the runtime directory by the host process
+    depsSource = "${firecracker-guest-bundle}";
     jailerBinaryPath = "${pkgs.pkgsStatic.firecracker}/bin/jailer";
     firecrackerBinaryPath = "${pkgs.pkgsStatic.firecracker}/bin/firecracker";
   };

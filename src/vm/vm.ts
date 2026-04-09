@@ -45,8 +45,8 @@ class VM implements AsyncDisposable {
     // TODO: add a check here and throw an error if deps are not present
     const hostDepsDir = join(runtimeRoot, "deps");
     const vmDepsDir = join(jailerRoot, "firecracker", vmId, "root", "deps");
-    const depsMountUpperdir = join(runtimeRoot, vmId, "upper");
-    const depsMountWorkdir = join(runtimeRoot, vmId, "work");
+    const depsMountUpperdir = join(runtimeRoot, "temp", vmId, "upper");
+    const depsMountWorkdir = join(runtimeRoot, "temp", vmId, "work");
     const depsMount = new OverlayMount(
       hostDepsDir,
       vmDepsDir,
