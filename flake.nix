@@ -40,6 +40,8 @@
         default = import ./nix/pkgs/firecracker-host-bundle.nix {
           inherit pkgs nixpkgs system;
         };
+
+        firecracker = pkgs.callPackage ./nix/pkgs/firecracker-bins.nix { };
       };
     };
 }
