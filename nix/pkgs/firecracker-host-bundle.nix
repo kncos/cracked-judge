@@ -4,7 +4,7 @@
   system ? "x86_64-linux",
 }:
 let
-  firecracker-guest-bundle = import ./firecracker {
+  firecracker-guest-bundle = import ./firecracker-vm {
     inherit pkgs nixpkgs system;
   };
 
