@@ -44,12 +44,12 @@ const main = async (config: z.infer<typeof zHostConfig>) => {
 
   logger.info("Starting job submissions...");
 
-  const timeout = new Promise<void>((resolve) => {
-    setTimeout(() => {
-      logger.warn("60s timeout reached, shutting down");
-      resolve();
-    }, TIMEOUT_MS);
-  });
+  // const timeout = new Promise<void>((resolve) => {
+  //   setTimeout(() => {
+  //     logger.warn("60s timeout reached, shutting down");
+  //     resolve();
+  //   }, TIMEOUT_MS);
+  // });
 
   const runJobs = async () => {
     for (let n = 1; n <= TOTAL_JOBS; n++) {
@@ -83,7 +83,14 @@ const main = async (config: z.infer<typeof zHostConfig>) => {
     logger.info("All jobs completed");
   };
 
-  await Promise.race([runJobs(), timeout]);
+  await runJobs();
+  const ac = new AbortController();
+  process.on("SIGINT", () => {
+    ac.abort();
+  });
+  await new Promise((res) => {
+    ac.signal.addEventListener("abort", res, { once: true });
+  });
 
   await cleanup();
 };
