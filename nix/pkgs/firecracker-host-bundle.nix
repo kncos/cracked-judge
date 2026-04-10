@@ -4,17 +4,18 @@
   system ? "x86_64-linux",
 }:
 let
-  firecracker-guest-bundle = import ./firecracker {
+  firecracker-guest-bundle = import ./firecracker-vm {
     inherit pkgs nixpkgs system;
   };
 
+  firecracker-bins = pkgs.pkgsStatic.firecracker;
   cj-host = import ./cj-host.nix { inherit pkgs; };
   host-config = import ./host-config.nix {
     inherit pkgs;
     # copied to the runtime directory by the host process
     depsSource = "${firecracker-guest-bundle}";
-    jailerBinaryPath = "${pkgs.pkgsStatic.firecracker}/bin/jailer";
-    firecrackerBinaryPath = "${pkgs.pkgsStatic.firecracker}/bin/firecracker";
+    jailerBinaryPath = "${firecracker-bins}/bin/jailer";
+    firecrackerBinaryPath = "${firecracker-bins}/bin/firecracker";
   };
 in
 pkgs.runCommand "host-bundle" { } ''
