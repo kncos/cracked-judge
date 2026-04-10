@@ -1,58 +1,82 @@
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import { BindMount, OverlayMount } from "@/lib/file-system";
-import { changePerms } from "@/lib/file-system/utils";
+import { changePerms, fileExists } from "@/lib/file-system/utils";
 import { createFirecrackerClient } from "@/lib/firecracker-api";
 import { CrackedError } from "@/lib/judge-error";
 import { baseLogger } from "@/lib/logger";
 import { createAsyncProc } from "@/lib/proc/async-proc";
 import { join } from "path";
+import type { HostConfig } from "./config";
 
 const logger = baseLogger.child({}, { msgPrefix: "[VM] " });
 const UID = "60000" as const;
 const GID = "60000" as const;
 
 class VM implements AsyncDisposable {
-  //private stack: AsyncDisposableStack;
-
   private stack: AsyncDisposableStack = new AsyncDisposableStack();
   private readonly vmProcCmd: string[];
 
-  private readonly depsDir: string;
-  private readonly runDir: string;
-  private readonly jailDir: string;
-
-  private readonly vmRunDir: string;
-  private readonly vmDepsDir: string;
-
   private readonly guestInitiatedSockPath: string;
-  private readonly hostInitiatedSockPath: string;
+  // private readonly hostInitiatedSockPath: string;
   private readonly firecrackerSockPath: string;
 
   private isCreated: boolean = false;
   public isDestroyed: boolean = false;
 
+  createFilesystem = () => {};
+
   constructor(
     public readonly vmId: string,
-    public readonly vmRoot: string,
+    public readonly config: HostConfig,
   ) {
-    // host directories
-    this.depsDir = join(vmRoot, "base");
-    this.runDir = join(vmRoot, "run", vmId);
-    // jail directory where VM stuff goes
-    this.jailDir = join(vmRoot, "jail");
-    // directories inside vm chroot
-    this.vmRunDir = join(this.jailDir, "firecracker", vmId, "root", "run");
-    this.vmDepsDir = join(this.jailDir, "firecracker", vmId, "root", "base");
+    const { runtimeRoot, jailerBinaryPath, firecrackerBinaryPath } = config;
+    const jailerRoot = join(runtimeRoot, "jail");
 
-    this.guestInitiatedSockPath = join(this.runDir, "v.sock_52");
-    this.hostInitiatedSockPath = join(this.runDir, "v.sock");
-    this.firecrackerSockPath = join(this.runDir, "firecracker.socket");
+    // runtime bind mount for shared files like sockets
+    const hostRunDir = join(runtimeRoot, "run", vmId);
+    const vmRunDir = join(jailerRoot, "firecracker", vmId, "root", "run");
+    const runMount = new BindMount(hostRunDir, vmRunDir, UID, GID);
+    this.stack.use(runMount);
+    logger.debug("Created Bind Mount for VM runtime files");
+
+    // overlay mount to expose dependencies to the VM and allow it to
+    // write without modifying the originals. Prerequisite is that the
+    // deps were copied from `config.depsSource` to `{runtimeRoot}/deps`
+    // TODO: add a check here and throw an error if deps are not present
+    const hostDepsDir = join(runtimeRoot, "deps");
+    const vmDepsDir = join(jailerRoot, "firecracker", vmId, "root", "deps");
+    const depsMountUpperdir = join(runtimeRoot, "temp", vmId, "upper");
+    const depsMountWorkdir = join(runtimeRoot, "temp", vmId, "work");
+    const depsMount = new OverlayMount(
+      hostDepsDir,
+      vmDepsDir,
+      depsMountUpperdir,
+      depsMountWorkdir,
+    );
+    this.stack.use(depsMount);
+    logger.debug("Created Overlay Mount");
+
+    // change permissions in the overlay; this modifies the overlayfs layer
+    // and allows the VM uid/gid to access the appropriate files we have provided
+    changePerms({
+      path: vmDepsDir,
+      uid: UID,
+      gid: GID,
+      mod: "777",
+      recursive: true,
+    });
+    logger.debug("Changed perms of vm dependencies overlay");
+
+    // directories on host where sockets can be listened
+    this.guestInitiatedSockPath = join(hostRunDir, "v.sock_52");
+    // this.hostInitiatedSockPath = join(hostRunDir, "v.sock");
+    this.firecrackerSockPath = join(hostRunDir, "firecracker.socket");
 
     this.vmProcCmd = [
       //TODO: temp solution
-      join(vmRoot, "jailer"),
+      jailerBinaryPath,
       "--exec-file",
-      join(vmRoot, "firecracker"),
+      firecrackerBinaryPath,
       "--uid",
       UID,
       "--gid",
@@ -60,10 +84,10 @@ class VM implements AsyncDisposable {
       "--id",
       vmId,
       "--chroot-base-dir",
-      this.jailDir,
+      jailerRoot,
       "--",
       "--config-file",
-      join("base", "vm-config.json"),
+      join("deps", "vm-config.json"),
     ];
   }
 
@@ -76,29 +100,6 @@ class VM implements AsyncDisposable {
     this.isCreated = true;
 
     try {
-      // we can place sockets in the host dir then bind mount them
-      // into the vm's /run/ directory, as well as any other metadata
-      const run = new BindMount(this.runDir, this.vmRunDir, UID, GID);
-      this.stack.use(run);
-      logger.debug("Created Bind Mount");
-
-      // place dependencies in VM chroot dir using overlayfs so it can
-      // modify them ephemerally without cloning the large dependencies in full
-      const deps = new OverlayMount(this.depsDir, this.vmDepsDir);
-      this.stack.use(deps);
-      logger.debug("Created Overlay Mount");
-
-      // change permissions in the overlay; this modifies the overlayfs layer
-      // and allows the VM uid/gid to access the appropriate files we have provided
-      changePerms({
-        path: this.vmDepsDir,
-        uid: UID,
-        gid: GID,
-        mod: "777",
-        recursive: true,
-      });
-      logger.debug("Changed perms");
-
       const socketProc = await createAsyncProc({
         cmd: [
           "socat",
@@ -114,6 +115,7 @@ class VM implements AsyncDisposable {
       logger.debug("Created socket proc");
 
       const firecrackerSockPath = this.firecrackerSockPath;
+
       const vmProc = await createAsyncProc({
         cmd: this.vmProcCmd,
         // before destroying the VM, send the ctrl+alt+delete signal
@@ -130,19 +132,40 @@ class VM implements AsyncDisposable {
           });
 
           try {
+            if (!fileExists(firecrackerSockPath)) {
+              logger.error(
+                `Firecracker socket doesn't exist! path: ${firecrackerSockPath}`,
+              );
+            }
+
             await api.PUT("/actions", {
               body: { action_type: "SendCtrlAltDel" },
             });
-            // wait for it to be killed for 250ms,
+            // wait for it to be killed for 1000ms,
             // for firecracker that *should* be enough... presumably
             // if this fails, AsyncProc kills it forcefully
-            await Promise.race([Bun.sleep(250), proc.getExitResult()]);
+            await Promise.race([Bun.sleep(1000), proc.getExitResult()]);
           } catch (error) {
-            baseLogger.error(
-              { errorMessage: (error as Error).message },
+            logger.error(
+              {
+                errorMessage: (error as Error).message,
+                socketFile: firecrackerSockPath,
+                socketFileExists: fileExists(firecrackerSockPath),
+              },
               "Firecracker failed in preDestroy!",
             );
           }
+        },
+
+        onError(e) {
+          logger.error(
+            {
+              errorMessage: e.message,
+              code: e.code,
+              cause: e.cause,
+            },
+            "Caught an exception during teardown",
+          );
         },
       });
       this.stack.use(vmProc);
@@ -174,11 +197,14 @@ class VM implements AsyncDisposable {
   }
 }
 
-export const createVm = async (props: { vmId?: string; vmRoot: string }) => {
+export const createVm = async (props: {
+  vmId?: string;
+  config: HostConfig;
+}) => {
   logger.debug("createVm Factory invoked");
-  const { vmId = crypto.randomUUID(), vmRoot } = props;
-  logger.debug({ vmId, vmRoot }, "Creating VM with params:");
-  const vm = new VM(vmId, vmRoot);
+  const { vmId = crypto.randomUUID(), config } = props;
+  logger.debug({ vmId, config }, "Creating VM with params:");
+  const vm = new VM(vmId, config);
   logger.debug("VM Constructor invoked");
   await vm.create();
   logger.debug("VM created");

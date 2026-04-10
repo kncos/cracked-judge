@@ -1,6 +1,5 @@
 import { tryCatch } from "../lib/utils";
 import { vmClient } from "../server/client";
-import { createJob } from "./job";
 
 const main = async () => {
   while (true) {
@@ -17,8 +16,20 @@ const main = async () => {
       continue;
     }
 
-    await using job = await createJob(data);
-    await job.execute();
+    // await using job = await createJob(data);
+    // await job.execute();
+
+    await tryCatch(
+      vmClient.submitJobResult({
+        id: data.id,
+        type: "result",
+        status: "accepted",
+        memoryKb: 256,
+        runtimeMs: 256,
+        stderr: "",
+        stdout: "hello from VM!",
+      }),
+    );
   }
 };
 
