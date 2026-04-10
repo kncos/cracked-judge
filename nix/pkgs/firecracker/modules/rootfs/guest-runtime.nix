@@ -6,6 +6,7 @@
 }:
 let
   cfg = config.guest-runtime;
+  cj-guest = import ../../../cj-guest.nix { inherit pkgs; };
 in
 {
   options.guest-runtime = {
@@ -17,20 +18,15 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-
-    environment.systemPackages =
-      let
-        runtime = import ../../../cj-guest.nix { inherit pkgs; };
-      in
-      [
-        runtime
-      ];
+    environment.systemPackages = [
+      cj-guest
+    ];
 
     systemd.services.guest-runtime = {
       description = "Spawn cj-guest worker runtime process";
       wantedBy = [ "multi-user.target" ];
       serviceConfig = {
-        ExecStart = "cj-guest";
+        ExecStart = "${cj-guest}/bin/cj-guest";
         Restart = "always";
         RestartSec = "1s";
       };

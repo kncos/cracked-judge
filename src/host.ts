@@ -52,7 +52,7 @@ const main = async (config: z.infer<typeof zHostConfig>) => {
   // });
 
   const runJobs = async () => {
-    for (let n = 1; n <= TOTAL_JOBS; n++) {
+    for (let n = 1; n <= 1; n++) {
       const txt = `job ${n}`;
       console.log(`Submitting: "${txt}"`);
 

@@ -1,7 +1,7 @@
 {
   pkgs,
   depsSource,
-  runtimeRoot ? "/tmp/cracked-judge/",
+  runtimeRoot ? "/var/cracked-judge/",
   jailerBinaryPath ? "jailer",
   firecrackerBinaryPath ? "firecracker",
 }:
