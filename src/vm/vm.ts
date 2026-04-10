@@ -35,7 +35,7 @@ class VM implements AsyncDisposable {
     // runtime bind mount for shared files like sockets
     const hostRunDir = join(runtimeRoot, "run", vmId);
     const vmRunDir = join(jailerRoot, "firecracker", vmId, "root", "run");
-    const runMount = new BindMount(hostRunDir, vmRunDir);
+    const runMount = new BindMount(hostRunDir, vmRunDir, UID, GID);
     this.stack.use(runMount);
     logger.debug("Created Bind Mount for VM runtime files");
 
@@ -132,6 +132,12 @@ class VM implements AsyncDisposable {
           });
 
           try {
+            if (!fileExists(firecrackerSockPath)) {
+              logger.error(
+                `Firecracker socket doesn't exist! path: ${firecrackerSockPath}`,
+              );
+            }
+
             await api.PUT("/actions", {
               body: { action_type: "SendCtrlAltDel" },
             });
@@ -140,7 +146,7 @@ class VM implements AsyncDisposable {
             // if this fails, AsyncProc kills it forcefully
             await Promise.race([Bun.sleep(1000), proc.getExitResult()]);
           } catch (error) {
-            baseLogger.error(
+            logger.error(
               {
                 errorMessage: (error as Error).message,
                 socketFile: firecrackerSockPath,
@@ -149,6 +155,17 @@ class VM implements AsyncDisposable {
               "Firecracker failed in preDestroy!",
             );
           }
+        },
+
+        onError(e) {
+          logger.error(
+            {
+              errorMessage: e.message,
+              code: e.code,
+              cause: e.cause,
+            },
+            "Caught an exception during teardown",
+          );
         },
       });
       this.stack.use(vmProc);
