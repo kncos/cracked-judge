@@ -41,7 +41,7 @@
           inherit pkgs nixpkgs system;
         };
 
-        firecracker = pkgs.callPackage ./nix/pkgs/firecracker-bins.nix { };
+        firecracker = pkgs.pkgsStatic.firecracker;
       };
     };
 }

@@ -12,15 +12,6 @@
       };
     });
 
-    firecracker = prev.firecracker.overrideAttrs (oldAttrs: rec {
-      version = "1.15.1";
-      src = prev.fetchFromGitHub {
-        owner = "firecracker-microvm";
-        repo = "firecracker";
-        rev = "v${version}";
-        hash = "sha256-H3dj11Q0MgLST1TWJ5rmfPePxjXrXOYI2Xf/3uUdICU=";
-      };
-      cargoHash = "sha256-N2WYnFTlz4NUAU/tjy18SPvxdDVDIIaqgu44e6unOHs=";
-    });
+    firecracker = prev.callPackage ./pkgs/firecracker-bins.nix { };
   })
 ]
