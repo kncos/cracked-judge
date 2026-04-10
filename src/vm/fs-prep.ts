@@ -18,6 +18,8 @@ export class HostFilesystem implements Disposable, AsyncDisposable {
    */
   public readonly runtimeRunPath: string;
 
+  public readonly runtimeJailPath: string;
+
   constructor(public readonly config: HostConfig) {
     // throws if invalid
     validateHostConfig(config);
@@ -25,6 +27,7 @@ export class HostFilesystem implements Disposable, AsyncDisposable {
     const { depsSource, runtimeRoot } = config;
     this.runtimeDepsPath = path.join(runtimeRoot, "deps");
     this.runtimeRunPath = path.join(runtimeRoot, "run");
+    this.runtimeJailPath = path.join(runtimeRoot, "jail");
 
     // Dependencies are copied to a deps dir in the runtime directory
     // because this ensures that all files being referenced or used at
@@ -33,8 +36,14 @@ export class HostFilesystem implements Disposable, AsyncDisposable {
     // like have a ramdisk be the runtime dir, but deps is on the SSD,
     // it would create a copy of the deps each time and fill the ramdisk
     const depsDir = new RecursiveDir(this.runtimeDepsPath);
-
     this.stack.use(depsDir);
+
+    const runDir = new RecursiveDir(this.runtimeRunPath);
+    this.stack.use(runDir);
+
+    const jailDir = new RecursiveDir(this.runtimeJailPath);
+    this.stack.use(jailDir);
+
     const cmd = [
       "rsync",
       "--sparse",

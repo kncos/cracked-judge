@@ -261,9 +261,8 @@ class AsyncProc implements AsyncDisposable {
           proc.kill("SIGKILL");
         }, this.killTimeoutBeforeSigkill);
 
-        if (timer) {
-          clearTimeout(timer);
-        }
+        await proc.exited;
+        clearTimeout(timer);
       }
       const result = await this.getExitResult();
 

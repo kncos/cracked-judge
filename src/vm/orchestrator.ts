@@ -31,7 +31,7 @@ export const createVmPool = async (config: HostConfig) => {
   const pool = genericPool.createPool(vmPoolFactory, {
     testOnBorrow: true,
     testOnReturn: true,
-    min: 4,
+    min: 1,
     max: 32,
   });
 

@@ -52,7 +52,7 @@ const main = async (config: z.infer<typeof zHostConfig>) => {
   // });
 
   const runJobs = async () => {
-    for (let n = 1; n <= 1; n++) {
+    for (let n = 1; n <= 5; n++) {
       const txt = `job ${n}`;
       console.log(`Submitting: "${txt}"`);
 
@@ -84,14 +84,7 @@ const main = async (config: z.infer<typeof zHostConfig>) => {
   };
 
   await runJobs();
-  const ac = new AbortController();
-  process.on("SIGINT", () => {
-    ac.abort();
-  });
-  await new Promise((res) => {
-    ac.signal.addEventListener("abort", res, { once: true });
-  });
-
+  // await Bun.sleep(5000);
   await cleanup();
 };
 

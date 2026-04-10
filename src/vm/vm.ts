@@ -1,6 +1,6 @@
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import { BindMount, OverlayMount } from "@/lib/file-system";
-import { changePerms } from "@/lib/file-system/utils";
+import { changePerms, fileExists } from "@/lib/file-system/utils";
 import { createFirecrackerClient } from "@/lib/firecracker-api";
 import { CrackedError } from "@/lib/judge-error";
 import { baseLogger } from "@/lib/logger";
@@ -135,13 +135,17 @@ class VM implements AsyncDisposable {
             await api.PUT("/actions", {
               body: { action_type: "SendCtrlAltDel" },
             });
-            // wait for it to be killed for 250ms,
+            // wait for it to be killed for 1000ms,
             // for firecracker that *should* be enough... presumably
             // if this fails, AsyncProc kills it forcefully
-            await Promise.race([Bun.sleep(250), proc.getExitResult()]);
+            await Promise.race([Bun.sleep(1000), proc.getExitResult()]);
           } catch (error) {
             baseLogger.error(
-              { errorMessage: (error as Error).message },
+              {
+                errorMessage: (error as Error).message,
+                socketFile: firecrackerSockPath,
+                socketFileExists: fileExists(firecrackerSockPath),
+              },
               "Firecracker failed in preDestroy!",
             );
           }
