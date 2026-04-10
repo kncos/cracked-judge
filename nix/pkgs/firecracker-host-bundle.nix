@@ -8,6 +8,10 @@ let
     inherit pkgs nixpkgs system;
   };
 
+  firecracker-bins = import ./firecracker-bins.nix {
+
+  };
+
   cj-host = import ./cj-host.nix { inherit pkgs; };
   host-config = import ./host-config.nix {
     inherit pkgs;
