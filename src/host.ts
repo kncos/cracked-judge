@@ -54,7 +54,7 @@ const main = async (config: z.infer<typeof zHostConfig>) => {
   const runJobs = async () => {
     for (let n = 1; n <= 3; n++) {
       const txt = `job ${n}`;
-      console.log(`Submitting: "${txt}"`);
+      // console.log(`Submitting: "${txt}"`);
 
       const vm = await orchestrator.acquire();
       const file = new File([txt], "submission.cpp");
@@ -63,7 +63,7 @@ const main = async (config: z.infer<typeof zHostConfig>) => {
       );
 
       if (error) {
-        console.log(`error: failed to submit job ${n}: ${error}`);
+        // console.log(`error: failed to submit job ${n}: ${error}`);
         logger.error(error, `Failed to submit job ${n}`);
         await orchestrator.release(vm);
         continue;

@@ -1,3 +1,6 @@
+# firecracker binaries, nixpkgs upstream has v1.14.2 as of writing.
+# i use this in overlays.nix as an overlay
+
 {
   lib,
   stdenv,
@@ -9,9 +12,9 @@
   rustPlatform,
   versionCheckHook,
 }:
-
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "firecracker";
+  # note: swapped out version. hashes updated
   version = "1.15.1";
 
   src = fetchFromGitHub {
