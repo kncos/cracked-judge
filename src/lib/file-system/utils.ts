@@ -1,7 +1,7 @@
 import * as Bun from "bun";
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
-import { type CrackedErrorCode } from "../judge-error";
+import { type CrackedErrorCode } from "../cracked-error";
 import { baseLogger } from "../logger";
 import { procLogAndMaybeThrow, procLogHelper } from "../utils";
 

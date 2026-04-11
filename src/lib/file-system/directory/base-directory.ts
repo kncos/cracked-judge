@@ -1,4 +1,4 @@
-import { CrackedError } from "@/lib/judge-error";
+import { CrackedError } from "@/lib/cracked-error";
 import { fileExists, fsLogger, isMountpoint } from "../utils";
 
 export interface IDir {

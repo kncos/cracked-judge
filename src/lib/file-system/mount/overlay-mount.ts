@@ -1,4 +1,4 @@
-import { CrackedError } from "@/lib/judge-error";
+import { CrackedError } from "@/lib/cracked-error";
 import { tryCatchSync } from "@/lib/utils";
 import { RecursiveDir } from "../directory";
 import { TempDir } from "../directory/temp-directory";

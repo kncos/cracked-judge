@@ -1,4 +1,4 @@
-import { CrackedError } from "@/lib/judge-error";
+import { CrackedError } from "@/lib/cracked-error";
 import { writeFileSync } from "fs";
 import { fsLogger, fsProcLogAndMaybeThrow } from "../utils";
 

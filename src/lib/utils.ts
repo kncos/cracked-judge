@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { CrackedError, type CrackedErrorCode } from "./judge-error";
+import { CrackedError, type CrackedErrorCode } from "./cracked-error";
 
 // Types for the result object with discriminated union
 type Success<T> = {

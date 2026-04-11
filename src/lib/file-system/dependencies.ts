@@ -1,4 +1,4 @@
-import { CrackedError } from "../judge-error";
+import { CrackedError } from "../cracked-error";
 import { indentStr } from "../utils";
 
 export const dependencies = [

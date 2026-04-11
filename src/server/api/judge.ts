@@ -1,4 +1,4 @@
-import { CrackedError, handleError } from "@/lib/judge-error";
+import { CrackedError, handleError } from "@/lib/cracked-error";
 import { eventIterator } from "@orpc/server";
 import { publicRoute } from "../orpc";
 import { zJob, zJobStatusOrResult } from "../schemas";

@@ -1,4 +1,4 @@
-import { CrackedError, handleError } from "./judge-error";
+import { CrackedError, handleError } from "./cracked-error";
 import { tryCatch } from "./utils";
 
 export class AsyncDisposableMap<

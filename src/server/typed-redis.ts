@@ -1,4 +1,4 @@
-import { handleError } from "@/lib/judge-error";
+import { handleError } from "@/lib/cracked-error";
 import { createRedisPool, type RedisPool } from "@/lib/redis-pool";
 import {
   deserializeJob,

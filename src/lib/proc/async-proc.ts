@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { CrackedError } from "../judge-error";
+import { CrackedError } from "../cracked-error";
 import { baseLogger, bufferStream } from "../logger";
 import { exitCodeSignalMapping, invokeCallback, logAndRethrow } from "./utils";
 

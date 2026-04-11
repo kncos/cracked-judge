@@ -24,6 +24,8 @@ export default tseslint.config(
       // false positives (e.g. timer assigned inside new Promise constructor)
       "@typescript-eslint/no-unnecessary-condition": "off",
       "@typescript-eslint/restrict-template-expressions": "off",
+      // Error on non-exhaustive switch statements over union types/enums
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
     },
   },
   {

@@ -1,8 +1,8 @@
+import { CrackedError } from "@/lib/cracked-error";
 import { destroyWithLogging } from "@/lib/destroy-with-logging";
 import { BindMount, OverlayMount } from "@/lib/file-system";
 import { changePerms, fileExists } from "@/lib/file-system/utils";
 import { createFirecrackerClient } from "@/lib/firecracker-api";
-import { CrackedError } from "@/lib/judge-error";
 import { baseLogger } from "@/lib/logger";
 import { createAsyncProc } from "@/lib/proc/async-proc";
 import { join } from "path";

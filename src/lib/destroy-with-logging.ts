@@ -1,4 +1,4 @@
-import { handleError } from "./judge-error";
+import { handleError } from "./cracked-error";
 import { baseLogger } from "./logger";
 import { tryCatchTimeout } from "./try-catch-timeout";
 

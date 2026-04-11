@@ -1,5 +1,5 @@
 import type { Logger } from "pino";
-import { CrackedError, type CrackedErrorCode } from "../judge-error";
+import { CrackedError, type CrackedErrorCode } from "../cracked-error";
 
 export const invokeCallback = async (params: {
   callback?: () => void | Promise<void>;
