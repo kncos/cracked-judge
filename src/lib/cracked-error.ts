@@ -18,6 +18,7 @@ export type CrackedErrorCode =
   | "FS_TEMP_FILE"
   | "FS_UNZIP"
   | "FS_WRITE"
+  | "FS_ZIP"
   | "GUEST_COMPILE_FAILED"
   | "GUEST_MALFORMED_JOB"
   | "GUEST_RUN_FAILED"

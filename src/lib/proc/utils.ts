@@ -81,21 +81,3 @@ export function logAndRethrow(
 
   throw e;
 }
-
-export const exitCodeSignalMapping: Record<number, NodeJS.Signals> = {
-  129: "SIGHUP",
-  130: "SIGINT",
-  131: "SIGQUIT",
-  132: "SIGILL",
-  133: "SIGTRAP",
-  134: "SIGABRT",
-  135: "SIGBUS",
-  136: "SIGFPE",
-  137: "SIGKILL",
-  138: "SIGUSR1",
-  139: "SIGSEGV",
-  140: "SIGUSR2",
-  141: "SIGPIPE",
-  142: "SIGALRM",
-  143: "SIGTERM",
-};

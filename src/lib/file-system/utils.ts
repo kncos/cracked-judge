@@ -120,3 +120,8 @@ export const changePerms = (opts: {
     );
   }
 };
+
+export const zipDirectory = (params: { path: string; outputPath: string }) => {
+  const { path, outputPath } = params;
+  const proc = Bun.spawnSync(["7z", "a", path, outputPath]);
+};

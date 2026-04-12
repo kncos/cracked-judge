@@ -1,7 +1,8 @@
 import type { Logger } from "pino";
 import { CrackedError } from "../cracked-error";
 import { baseLogger, bufferStream } from "../logger";
-import { exitCodeSignalMapping, invokeCallback, logAndRethrow } from "./utils";
+import { exitCodeSignalMapping } from "../signal";
+import { invokeCallback, logAndRethrow } from "./utils";
 
 type ProcessResult = {
   pid: number;

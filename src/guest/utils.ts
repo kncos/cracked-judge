@@ -1,7 +1,8 @@
 import pino from "pino";
 import pretty from "pino-pretty";
 
-// TODO: remove pretty later on
+export type JudgeStatus = "IE" | "CE" | "RE" | "MLE" | "TLE" | "WA" | "AC";
+
 const prettyStream = pretty({
   colorize: true,
   sync: false,
