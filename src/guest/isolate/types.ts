@@ -1,6 +1,15 @@
-import * as Bun from "bun";
 import z from "zod";
-import type { JudgeStatus } from "../utils";
+
+export type IsolateCompileResult = {
+  stdout: string;
+  stderr: string;
+  metadata: z.infer<typeof zIsolateMeta>;
+  status: "CE" | "IE" | "AC";
+};
+
+// quick check to generate an error if these ever become decoupled
+type _t = IsolateCompileResult["status"] extends JudgeStatus ? true : false;
+const _check_t: _t = true;
 
 export type IsolateResult = {
   stdout: string;
@@ -8,27 +17,38 @@ export type IsolateResult = {
   metadata: z.infer<typeof zIsolateMeta>;
   status: JudgeStatus;
   message: string;
-  payload?: Bun.BunFile;
 };
 
-export const zIsolateLimits = z
-  .object({
-    time: z.number().nonnegative(),
-    memory: z.number().nonnegative(),
-    wall_time: z.number().nonnegative(),
-    extra_time: z.number().nonnegative(),
-    stack_size: z.number().nonnegative(),
-    open_files: z.number().nonnegative(),
-    file_size: z.number().nonnegative(),
-    quota: z.object({
-      blocks: z.number().nonnegative(),
-      inodes: z.number().nonnegative(),
-    }),
-    //TODO: add `true` to this type union and in that case just
-    //TODO: pass `-p` for unlimited sub-processes
-    processes: z.number(),
-  })
-  .partial();
+/**
+ * Options for isolate.
+ * - `time`, `wall_time`, and `extra_time` are in sections and accept decimals
+ * - `cg_mem`, `stack`, and `fsize` are in KiB
+ * - `box_id` defaults to `0`
+ * - `processes`:
+ *    - key absent: no sub-processes allowed
+ *    - value is int: {value} sub-processes allowed
+ *    - value is `true`: unlimited sub-processes allowed
+ * @see https://www.ucw.cz/isolate/isolate.1.html
+ */
+export const zIsolateRunOpts = z.object({
+  // only required param
+  cmd: z.array(z.string().nonempty()).nonempty(),
+  time: z.number().nonnegative().optional(),
+  cg_mem: z.int().nonnegative().optional(),
+  wall_time: z.number().nonnegative().optional(),
+  extra_time: z.number().nonnegative().optional(),
+  stack: z.int().nonnegative().optional(),
+  open_files: z.int().nonnegative().optional(),
+  fsize: z.int().nonnegative().optional(),
+  quota: z
+    .object({
+      blocks: z.int().nonnegative(),
+      inodes: z.int().nonnegative(),
+    })
+    .optional(),
+  processes: z.int().or(z.literal(true)).optional(),
+  box_id: z.int().default(0).optional(),
+});
 
 export const zIsolateMeta = z.object({
   cg_mem: z.coerce.number(),
@@ -50,7 +70,17 @@ export const zIsolateMeta = z.object({
     .transform((v) => v === 1),
   max_rss: z.coerce.number(),
   message: z.string().optional().default("N/A"),
-  status: z.enum(["RE", "SG", "TO", "XX"]),
+  status: z.enum(["RE", "SG", "TO", "XX"]).optional(),
   time: z.coerce.number(),
   time_wall: z.coerce.number(),
 });
+
+export type JudgeStatus =
+  | "IE"
+  | "CE"
+  | "RE"
+  | "MLE"
+  | "TLE"
+  | "WA"
+  | "AC"
+  | "OLE";

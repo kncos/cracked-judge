@@ -4,17 +4,22 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type z from "zod";
 import { guestLogger } from "../utils";
-import type { IsolateResult } from "./types";
-import { zIsolateLimits, zIsolateMeta } from "./types";
+import type { IsolateCompileResult, IsolateResult } from "./types";
+import { zIsolateMeta, zIsolateRunOpts } from "./types";
 import { getRunArgs, interpretMeta, parseMeta } from "./utils";
 
 // re-export types
-export { zIsolateLimits, zIsolateMeta, type IsolateResult };
+export { zIsolateRunOpts as zIsolateLimits, zIsolateMeta, type IsolateResult };
+
+export const compileUnderIsolate = (params: {
+  cmd: string[];
+  max_time: number;
+}): IsolateCompileResult => {};
 
 // main function exposed by this api
 export const runUnderIsolate = (params: {
   cmd: string[];
-  limits?: z.input<typeof zIsolateLimits>;
+  limits?: z.input<typeof zIsolateRunOpts>;
   getPayload?: boolean;
 }): IsolateResult => {
   const { cmd, limits, getPayload = false } = params;
