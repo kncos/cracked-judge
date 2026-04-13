@@ -42,6 +42,11 @@
         };
 
         firecracker = pkgs.pkgsStatic.firecracker;
+
+        firecracker-debug-bundle = pkgs.callPackage ./nix/pkgs/firecracker {
+          inherit system nixpkgs;
+          isDebug = true;
+        };
       };
     };
 }
