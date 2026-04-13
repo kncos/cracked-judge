@@ -4,6 +4,7 @@ import { cleanup, init, run } from "../isolate/commands";
 
 import { afterEach, beforeEach } from "bun:test";
 
+//! DEPRECATED:
 const testbin = "/srv/data/testbin";
 const bins = {
   bigFile: path.join(testbin, "big-file"),

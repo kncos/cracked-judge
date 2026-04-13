@@ -85,7 +85,7 @@ export const run = (
     "--run",
     "--dir=/nix/store/",
     "--dir=/run/current-system/sw",
-    "--dir=/srv/data/testbin",
+    "--dir=/srv/data/",
     "--env=PATH=/run/current-system/sw/bin",
     `--meta=${metaPath}`,
     `--stdout=stdout.txt`,
