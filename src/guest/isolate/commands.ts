@@ -1,4 +1,5 @@
 import { CrackedError } from "@/lib/cracked-error";
+import { fsProcLogHelper } from "@/lib/file-system/utils";
 import { procLogAndMaybeThrow } from "@/lib/utils";
 import { readFileSync } from "node:fs";
 import path from "path";
@@ -85,7 +86,7 @@ export const run = (
     "--run",
     "--dir=/nix/store/",
     "--dir=/run/current-system/sw",
-    "--dir=/srv/data/",
+    "--dir=/lib=",
     "--env=PATH=/run/current-system/sw/bin",
     `--meta=${metaPath}`,
     `--stdout=stdout.txt`,
@@ -138,9 +139,15 @@ export const run = (
   const proc = Bun.spawnSync(cmd);
 
   // relevant information from the runtime
-  const stdout = readFileSync(stdoutPath).toString("utf-8");
-  const stderr = readFileSync(stderrPath).toString("utf-8");
-  const metadata = parseMeta(readFileSync(metaPath).toString("utf-8"));
-
-  return { stdout, stderr, metadata, ...interpretMeta(metadata) };
+  try {
+    const stdout = readFileSync(stdoutPath).toString("utf-8");
+    const stderr = readFileSync(stderrPath).toString("utf-8");
+    const metadata = parseMeta(readFileSync(metaPath).toString("utf-8"));
+    return { stdout, stderr, metadata, ...interpretMeta(metadata) };
+  } catch (e) {
+    const ls = Bun.spawnSync(["ls", "-lR", "/var/lib/isolate/"]);
+    fsProcLogHelper(proc, cmd);
+    console.log("LS RESULT:", ls.stdout.toString(), ls.stderr.toString());
+    throw e;
+  }
 };

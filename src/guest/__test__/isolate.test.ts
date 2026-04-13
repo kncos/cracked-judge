@@ -1,26 +1,20 @@
-import { describe, expect, test } from "bun:test";
-import path from "path";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { cleanup, init, run } from "../isolate/commands";
+import type { IsolateResult } from "../isolate/types";
 
-import { afterEach, beforeEach } from "bun:test";
-
-const testbin = "/srv/data/testbin";
-const bins = {
-  bigFile: path.join(testbin, "big-file"),
-  bigStdout: path.join(testbin, "big-stdout"),
-  exitCode: path.join(testbin, "exit-code"),
-  mle: path.join(testbin, "mle"),
-  segfault: path.join(testbin, "segfault"),
-  stderr: path.join(testbin, "stderr"),
-  stdout: path.join(testbin, "stdout"),
-  tle: path.join(testbin, "tle"),
-  unhandledEx: path.join(testbin, "unhandled-ex"),
-  wallTle: path.join(testbin, "wall-tle"),
-} as const;
-
+const testbin = "/run/current-system/sw/bin/isolate-test-program";
 const BOX_ID = 0;
 
-describe("JudgeStatus", () => {
+const printres = (input: IsolateResult) => {
+  console.log(">>> STDOUT:");
+  console.log(input.stdout.slice(0, 2048));
+  console.log(">>> STDERR:");
+  console.log(input.stderr.slice(0, 2048));
+  console.log(">>> METADATA:");
+  console.log(JSON.stringify(input.metadata, null, 2));
+};
+
+describe("Judge Status Results", () => {
   beforeEach(() => {
     init(BOX_ID);
   });
@@ -29,101 +23,138 @@ describe("JudgeStatus", () => {
     cleanup(BOX_ID);
   });
 
-  test("AC — clean zero exit", () => {
-    const result = run({ cmd: [bins.exitCode, "0"], box_id: BOX_ID });
-    expect(result.status).toBe("AC");
-    expect(result.metadata.exitcode).toBe(0);
-    expect(result.metadata.killed).toBe(false);
+  it("AC — clean zero exit", () => {
+    const result = run({ cmd: [testbin, "--exitcode=0"], box_id: BOX_ID });
+    try {
+      expect(result.status).toBe("AC");
+      expect(result.metadata.exitcode).toBe(0);
+      expect(result.metadata.killed).toBe(false);
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 
-  test("WA — reserved exit code 69", () => {
-    const result = run({ cmd: [bins.exitCode, "69"], box_id: BOX_ID });
-    expect(result.status).toBe("WA");
-    expect(result.metadata.exitcode).toBe(69);
+  it("WA — reserved exit code 69", () => {
+    const result = run({ cmd: [testbin, "--exitcode=69"], box_id: BOX_ID });
+    try {
+      expect(result.status).toBe("WA");
+      expect(result.metadata.exitcode).toBe(69);
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 
-  test("RE — non-zero non-69 exit code", () => {
-    const result = run({ cmd: [bins.exitCode, "1"], box_id: BOX_ID });
-    expect(result.status).toBe("RE");
-    expect(result.metadata.status).toBe("RE");
-    expect(result.metadata.exitcode).toBe(1);
+  it("RE — non-zero non-69 exit code", () => {
+    const result = run({ cmd: [testbin, "--exitcode=1"], box_id: BOX_ID });
+    try {
+      expect(result.status).toBe("RE");
+      expect(result.metadata.status).toBe("RE");
+      expect(result.metadata.exitcode).toBe(1);
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 
-  test("RE — unhandled C++ exception (calls std::terminate, exit 134)", () => {
-    const result = run({ cmd: [bins.unhandledEx], box_id: BOX_ID });
-    expect(result.status).toBe("RE");
+  it("RE — unhandled exception (panic)", () => {
+    const result = run({ cmd: [testbin, "--throw"], box_id: BOX_ID });
+    try {
+      expect(result.status).toBe("RE");
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 
-  test("RE — segfault (SIGSEGV)", () => {
-    const result = run({ cmd: [bins.segfault], box_id: BOX_ID });
-    // segfault comes through as SG with SIGSEGV, which interpretMeta maps to RE
-    expect(result.status).toBe("RE");
-    expect(result.metadata.status).toBe("SG");
-    expect(result.metadata.exitsig).toBeDefined();
+  it("RE — segfault (SIGSEGV)", () => {
+    const result = run({ cmd: [testbin, "--exitsig=11"], box_id: BOX_ID });
+    try {
+      expect(result.status).toBe("RE");
+      expect(result.metadata.status).toBe("SG");
+      expect(result.metadata.exitsig).toBeDefined();
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 
-  test("TLE — CPU time limit exceeded", () => {
+  it("TLE — CPU time limit exceeded", () => {
+    const result = run({ cmd: [testbin, "--time=5"], time: 1, box_id: BOX_ID });
+    try {
+      expect(result.status).toBe("TLE");
+      expect(result.metadata.status).toBe("TO");
+      expect(result.metadata.killed).toBe(true);
+      expect(result.metadata.time).toBeGreaterThanOrEqual(1);
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
+  });
+
+  it("TLE — wall clock time limit exceeded", () => {
     const result = run({
-      cmd: [bins.tle, "5"],
-      time: 1,
-      box_id: BOX_ID,
-    });
-    expect(result.status).toBe("TLE");
-    expect(result.metadata.status).toBe("TO");
-    expect(result.metadata.killed).toBe(true);
-    // actual cpu time should be at or just over the 1s limit
-    expect(result.metadata.time).toBeGreaterThanOrEqual(1);
-  });
-
-  test("TLE — wall clock time limit exceeded (sleeping process)", () => {
-    const result = run({
-      cmd: [bins.wallTle, "5"],
+      cmd: [testbin, "--sleep=5"],
       wall_time: 1,
       box_id: BOX_ID,
     });
-    expect(result.status).toBe("TLE");
-    expect(result.metadata.status).toBe("TO");
-    expect(result.metadata.killed).toBe(true);
-    expect(result.metadata.time_wall).toBeGreaterThanOrEqual(1);
-    // cpu time should be near zero since the process was just sleeping
-    expect(result.metadata.time).toBeLessThan(0.5);
+    try {
+      expect(result.status).toBe("TLE");
+      expect(result.metadata.status).toBe("TO");
+      expect(result.metadata.killed).toBe(true);
+      expect(result.metadata.time_wall).toBeGreaterThanOrEqual(1);
+      expect(result.metadata.time).toBeLessThan(0.5);
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 
-  test("MLE — exceeds cgroup memory limit", () => {
+  it("MLE — exceeds cgroup memory limit", () => {
     const result = run({
-      // try to alloc 256 MiB, limit to 64 MiB
-      cmd: [bins.mle, "256"],
+      cmd: [testbin, "--memory=256"],
       cg_mem: 65536,
       box_id: BOX_ID,
     });
-    expect(result.status).toBe("MLE");
-    expect(result.metadata.cg_oom_killed).toBe(true);
+    try {
+      expect(result.status).toBe("MLE");
+      expect(result.metadata.cg_oom_killed).toBe(true);
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 
-  test("OLE — stdout exceeds fsize limit", () => {
+  it("OLE — stdout exceeds fsize limit", () => {
     const result = run({
-      // try to write 64 MiB to stdout, limit to 1 MiB
-      cmd: [bins.bigStdout, "64"],
-      // KiB
+      cmd: [testbin, "--write=64,stdout"],
       fsize: 1024,
       box_id: BOX_ID,
     });
-    expect(result.status).toBe("OLE");
-    expect(result.metadata.status).toBe("SG");
-    // isolate kills the process with SIGXFSZ when fsize is exceeded
-    expect(result.metadata.exitsig).toBeDefined();
+    try {
+      expect(result.status).toBe("OLE");
+      expect(result.metadata.status).toBe("SG");
+      expect(result.metadata.exitsig).toBeDefined();
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 
-  test("OLE — file write exceeds fsize limit", () => {
+  it("OLE — file write exceeds fsize limit", () => {
     const result = run({
-      // try to write 64 MiB to a file, limit to 1 MiB
-      cmd: [bins.bigFile, "64"],
-      // KiB
+      cmd: [testbin, "--write=64,out.bin"],
       fsize: 1024,
       box_id: BOX_ID,
     });
-    expect(result.status).toBe("OLE");
-    expect(result.metadata.status).toBe("SG");
-    expect(result.metadata.exitsig).toBeDefined();
+    try {
+      expect(result.status).toBe("OLE");
+      expect(result.metadata.status).toBe("SG");
+      expect(result.metadata.exitsig).toBeDefined();
+    } catch (e) {
+      printres(result);
+      throw e;
+    }
   });
 });

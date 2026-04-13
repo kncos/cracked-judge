@@ -11,6 +11,10 @@
         "fs.suid_dumpable" = 0;
       };
     };
+
+    loader.grub = {
+      device = "nodev";
+    };
   };
 
   environment = {

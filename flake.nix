@@ -47,6 +47,8 @@
           inherit system nixpkgs;
           isDebug = true;
         };
+
+        isolate-test-program = pkgs.pkgsStatic.callPackage ./nix/pkgs/isolate-test-program.nix { };
       };
     };
 }
