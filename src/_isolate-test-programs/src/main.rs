@@ -156,7 +156,10 @@ fn main() {
     if let Some(val) = get_flag(&args, "exitsig") {
         let sig: libc::c_int = parse_arg(val, 11);
         eprintln!("[exitsig] Raising signal {}...", sig);
-        unsafe { libc::raise(sig) };
+        unsafe { 
+          libc::signal(sig, libc::SIG_DFL);
+          libc::raise(sig);
+        };
     }
 
     // --exitcode[=code]: exit with a specific code (must be last)

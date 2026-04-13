@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { cleanup, init, run } from "./isolate/commands";
+import type { IsolateResult } from "./isolate/types";
 
 const testbin = "/srv/data/isolate-test-program";
 
@@ -42,23 +43,40 @@ function teardown() {
 }
 
 // --- Test Functions ---
+const printres = (input: IsolateResult) => {
+  console.log(">>> STDOUT:");
+  console.log(input.stdout.slice(0, 2048));
+  console.log(">>> STDERR:");
+  console.log(input.stdout.slice(0, 2048));
+  console.log(">>> METADATA:");
+  console.log(JSON.stringify(input.metadata, null, 2));
+};
 
 function testAcCleanZeroExit() {
   console.log("Starting: AC — clean zero exit");
   setup();
   const result = run({ cmd: [testbin, "--exitcode=0"], box_id: BOX_ID });
-  expect(result.status).toBe("AC");
-  expect(result.metadata.exitcode).toBe(0);
-  expect(result.metadata.killed).toBe(false);
+  try {
+    expect(result.status).toBe("AC");
+    expect(result.metadata.exitcode).toBe(0);
+    expect(result.metadata.killed).toBe(false);
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
-
 function testWaReservedExitCode() {
   console.log("Starting: WA — reserved exit code 69");
   setup();
   const result = run({ cmd: [testbin, "--exitcode=69"], box_id: BOX_ID });
-  expect(result.status).toBe("WA");
-  expect(result.metadata.exitcode).toBe(69);
+  try {
+    expect(result.status).toBe("WA");
+    expect(result.metadata.exitcode).toBe(69);
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 
@@ -66,9 +84,14 @@ function testReNonZeroExit() {
   console.log("Starting: RE — non-zero non-69 exit code");
   setup();
   const result = run({ cmd: [testbin, "--exitcode=1"], box_id: BOX_ID });
-  expect(result.status).toBe("RE");
-  expect(result.metadata.status).toBe("RE");
-  expect(result.metadata.exitcode).toBe(1);
+  try {
+    expect(result.status).toBe("RE");
+    expect(result.metadata.status).toBe("RE");
+    expect(result.metadata.exitcode).toBe(1);
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 
@@ -76,7 +99,12 @@ function testReUnhandledException() {
   console.log("Starting: RE — unhandled exception (panic)");
   setup();
   const result = run({ cmd: [testbin, "--throw"], box_id: BOX_ID });
-  expect(result.status).toBe("RE");
+  try {
+    expect(result.status).toBe("RE");
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 
@@ -84,9 +112,14 @@ function testReSegfault() {
   console.log("Starting: RE — segfault (SIGSEGV)");
   setup();
   const result = run({ cmd: [testbin, "--exitsig=11"], box_id: BOX_ID });
-  expect(result.status).toBe("RE");
-  expect(result.metadata.status).toBe("SG");
-  expect(result.metadata.exitsig).toBeDefined();
+  try {
+    expect(result.status).toBe("RE");
+    expect(result.metadata.status).toBe("SG");
+    expect(result.metadata.exitsig).toBeDefined();
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 
@@ -98,10 +131,15 @@ function testTleCpu() {
     time: 1,
     box_id: BOX_ID,
   });
-  expect(result.status).toBe("TLE");
-  expect(result.metadata.status).toBe("TO");
-  expect(result.metadata.killed).toBe(true);
-  expect(result.metadata.time).toBeGreaterThanOrEqual(1);
+  try {
+    expect(result.status).toBe("TLE");
+    expect(result.metadata.status).toBe("TO");
+    expect(result.metadata.killed).toBe(true);
+    expect(result.metadata.time).toBeGreaterThanOrEqual(1);
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 
@@ -113,11 +151,16 @@ function testTleWall() {
     wall_time: 1,
     box_id: BOX_ID,
   });
-  expect(result.status).toBe("TLE");
-  expect(result.metadata.status).toBe("TO");
-  expect(result.metadata.killed).toBe(true);
-  expect(result.metadata.time_wall).toBeGreaterThanOrEqual(1);
-  expect(result.metadata.time).toBeLessThan(0.5);
+  try {
+    expect(result.status).toBe("TLE");
+    expect(result.metadata.status).toBe("TO");
+    expect(result.metadata.killed).toBe(true);
+    expect(result.metadata.time_wall).toBeGreaterThanOrEqual(1);
+    expect(result.metadata.time).toBeLessThan(0.5);
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 
@@ -129,8 +172,13 @@ function testMleCgroup() {
     cg_mem: 65536,
     box_id: BOX_ID,
   });
-  expect(result.status).toBe("MLE");
-  expect(result.metadata.cg_oom_killed).toBe(true);
+  try {
+    expect(result.status).toBe("MLE");
+    expect(result.metadata.cg_oom_killed).toBe(true);
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 
@@ -142,9 +190,14 @@ function testOleStdout() {
     fsize: 1024,
     box_id: BOX_ID,
   });
-  expect(result.status).toBe("OLE");
-  expect(result.metadata.status).toBe("SG");
-  expect(result.metadata.exitsig).toBeDefined();
+  try {
+    expect(result.status).toBe("OLE");
+    expect(result.metadata.status).toBe("SG");
+    expect(result.metadata.exitsig).toBeDefined();
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 
@@ -156,9 +209,14 @@ function testOleFile() {
     fsize: 1024,
     box_id: BOX_ID,
   });
-  expect(result.status).toBe("OLE");
-  expect(result.metadata.status).toBe("SG");
-  expect(result.metadata.exitsig).toBeDefined();
+  try {
+    expect(result.status).toBe("OLE");
+    expect(result.metadata.status).toBe("SG");
+    expect(result.metadata.exitsig).toBeDefined();
+  } catch (e) {
+    printres(result);
+    throw e;
+  }
   teardown();
 }
 

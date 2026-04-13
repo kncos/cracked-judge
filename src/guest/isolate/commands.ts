@@ -1,5 +1,5 @@
 import { CrackedError } from "@/lib/cracked-error";
-import { procLogAndMaybeThrow, procLogHelper } from "@/lib/utils";
+import { procLogAndMaybeThrow } from "@/lib/utils";
 import { readFileSync } from "node:fs";
 import path from "path";
 import type z from "zod";
@@ -133,9 +133,9 @@ export const run = (
   // separate isolate args from the command we're running using `--`
   cmd.push("--", ...params.cmd);
 
+  // unused, we don't actually want to run logging on this because
+  // it should just exit with a metadata file with the info we need
   const proc = Bun.spawnSync(cmd);
-  // don't throw here because isolate itself returns non-zero exit
-  procLogHelper(proc, cmd, guestLogger);
 
   // relevant information from the runtime
   const stdout = readFileSync(stdoutPath).toString("utf-8");
