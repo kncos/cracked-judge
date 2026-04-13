@@ -75,16 +75,17 @@ export const run = (
   // with isolate, it's a no-op if init is run twice
   const boxPath = getBoxPath(params?.box_id);
   const metaPath = path.join(boxPath, "box", "metadata.out");
-  const stdoutPath = path.join(boxPath, "box", "stdout.out");
-  const stderrPath = path.join(boxPath, "box", "stderr.out");
+  const stdoutPath = path.join(boxPath, "box", "stdout.txt");
+  const stderrPath = path.join(boxPath, "box", "stderr.txt");
 
   // always want these args
   const cmd = [
     "isolate",
     "--cg",
     "--run",
-    "--dir=/nix/store/:ro",
-    "--dir=/run/current-system/sw:ro",
+    "--dir=/nix/store/",
+    "--dir=/run/current-system/sw",
+    "--dir=/srv/data/testbin",
     "--env=PATH=/run/current-system/sw/bin",
     `--meta=${metaPath}`,
     `--stdout=stdout.txt`,

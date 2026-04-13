@@ -22,6 +22,23 @@ in
       cj-guest
     ];
 
+    systemd.services.mount-data-disk = {
+      description = "temporary service i added for testing";
+      script = ''
+        # isolate just fails without this even though its unused
+        mkdir /lib
+        mkdir -p /srv/data
+        if [ -e /dev/vdb ]; then
+          mount /dev/vdb /srv/data
+        fi
+      '';
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+      };
+      wantedBy = [ "multi-user.target" ];
+    };
+
     systemd.services.guest-runtime = {
       description = "Spawn cj-guest worker runtime process";
       wantedBy = [ "multi-user.target" ];
