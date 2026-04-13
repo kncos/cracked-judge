@@ -1,0 +1,39 @@
+
+# 2026-04-13 08:00:47.378015
++machine.start()
+
+# 2026-04-13 08:01:15.876895
++machine.ex
+
+# 2026-04-13 08:01:29.819706
++machine.execute("systemctl status backdoor.service")
+
+# 2026-04-13 08:01:56.798232
++machine.shell_interact()
+
+# 2026-04-13 08:02:01.994764
++machine.stop()
+
+# 2026-04-13 08:02:10.733225
++exi
+
+# 2026-04-13 08:02:12.008048
++exit
+
+# 2026-04-13 08:02:38.063337
++machine.start()
+
+# 2026-04-13 08:05:40.096117
++machine
+
+# 2026-04-13 08:05:48.899402
++machine.execute("echo test")
+
+# 2026-04-13 08:07:56.821460
++machine.execute("systemctl status backdoor.service")
+
+# 2026-04-13 08:08:52.254008
++machine.send_console("systemctl status backdoor.service\n")
+
+# 2026-04-13 08:20:22.086318
++exit

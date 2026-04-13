@@ -14,8 +14,5 @@ in
       cj-guest-test
       isolate-test-program
     ];
-    virtualisation = {
-      memorySize = 1024;
-    };
   };
 }
