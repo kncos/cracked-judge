@@ -1,9 +1,9 @@
 { pkgs }:
 pkgs.bun2nix.mkDerivation {
-  src = ../../apps/guest;
+  src = ../../.;
   pname = "cj-guest";
   version = "0.1";
-  # module = "src/guest/index.ts";
+  module = "./apps/guest/src/index.ts";
 
   bunDeps = pkgs.bun2nix.fetchBunDeps {
     bunNix = ../bun.nix;
