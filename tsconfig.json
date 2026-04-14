@@ -32,5 +32,12 @@
     },
     "typeRoots": ["./node_modules/@types", "./src/types"]
   },
-  "include": ["src/**/*", "scripts/**/*"]
+  "include": [
+    "src/**/*",
+    "scripts/**/*",
+    "apps/server",
+    "common",
+    "apps/guest",
+    "apps/host/src/host.ts"
+  ]
 }
