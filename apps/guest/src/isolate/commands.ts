@@ -1,6 +1,6 @@
-import { CrackedError } from "@/lib/cracked-error";
 import { fsProcLogHelper } from "@/lib/file-system/utils";
 import { procLogAndMaybeThrow } from "@/lib/utils";
+import { CrackedError } from "@cracked-judge/common";
 import { readFileSync } from "node:fs";
 import path from "path";
 import type z from "zod";

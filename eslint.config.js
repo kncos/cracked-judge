@@ -8,33 +8,25 @@ export default tseslint.config(
   {
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          allowDefaultProject: [],
+          defaultProject: "tsconfig.json",
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
     rules: {
-      // Error on unawaited promises
       "@typescript-eslint/no-floating-promises": "error",
-      // Ignore unused variables that start with underscore
       "@typescript-eslint/no-unused-vars": [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
-      // TS control flow can't track assignments inside callbacks, leading to
-      // false positives (e.g. timer assigned inside new Promise constructor)
       "@typescript-eslint/no-unnecessary-condition": "off",
       "@typescript-eslint/restrict-template-expressions": "off",
-      // Error on non-exhaustive switch statements over union types/enums
       "@typescript-eslint/switch-exhaustiveness-check": "error",
     },
   },
   {
-    ignores: [
-      "mkosi/**",
-      "vmroot/**",
-      "test/**",
-      "eslint.config.js",
-      "src/lib/firecracker-types.ts",
-    ],
+    ignores: ["eslint.config.js"],
   },
 );

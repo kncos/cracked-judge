@@ -1,5 +1,12 @@
 {
   "name": "@cracked-judge/common",
   "version": "v1.0.0",
-  "type": "module"
+  "type": "module",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*/index.ts"
+  }
 }

@@ -3,3 +3,4 @@ import "./dependencies";
 
 export * from "./directory";
 export * from "./mount";
+export * from "./utils";
