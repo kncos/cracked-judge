@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, ... }:
 
 {
   #* note: simplified this significantly, we'll see if it still works
@@ -20,17 +20,17 @@
       # these were the options we had before, if we do make the
       # initrd it just runs NixOS stage 1 script, which performs
       # some actions that ultimately do nothing in the context of firecracker
-      systemd.enable = lib.mkForce false;
-      includeDefaultModules = lib.mkForce false;
-      availableKernelModules = lib.mkForce [ ];
-      kernelModules = lib.mkForce [ ];
+      systemd.enable = false;
+      includeDefaultModules = false;
+      availableKernelModules = [ ];
+      kernelModules = [ ];
     };
 
     loader.grub = {
       device = "nodev";
     };
 
-    extraModulePackages = lib.mkForce [ ];
+    extraModulePackages = [ ];
 
     # This *may* not even be necessary, it depends on if this is used to build
     # the initrd, but we have kernel.enable = false already and aren't building
@@ -83,7 +83,7 @@
   networking = {
     enableIPv6 = false;
     useDHCP = false;
-    interfaces = lib.mkForce { };
+    interfaces = { };
     hostName = "judge";
   };
 
@@ -108,7 +108,7 @@
       # off 200ms+, figure out how to actually disable this
       "modprobe@.service" = {
         enable = false;
-        wantedBy = lib.mkForce [ ];
+        wantedBy = [ ];
       };
     };
 

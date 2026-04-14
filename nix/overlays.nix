@@ -12,6 +12,21 @@
       };
     });
 
-    firecracker = prev.callPackage ./pkgs/firecracker-bins.nix { };
+    # firecracker = prev.pkgsStatic.callPackage ./pkgs/firecracker-bins.nix { };
+    firecracker = prev.firecracker.overrideAttrs (oldAttrs: {
+      version = "1.15.1";
+
+      src = prev.fetchFromGitHub {
+        owner = "firecracker-microvm";
+        repo = "firecracker";
+        rev = "v1.15.1";
+        hash = "sha256-H3dj11Q0MgLST1TWJ5rmfPePxjXrXOYI2Xf/3uUdICU=";
+      };
+
+      cargoDeps = oldAttrs.cargoDeps.overrideAttrs (_: {
+        inherit (oldAttrs) src;
+        outputHash = "sha256-N2WYnFTlz4NUAU/tjy18SPvxdDVDIIaqgu44e6unOHs=";
+      });
+    });
   })
 ]

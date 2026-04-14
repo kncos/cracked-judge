@@ -51,6 +51,8 @@
         isolate-test-program = pkgs.pkgsStatic.callPackage ./nix/pkgs/isolate-test-program.nix { };
       };
 
-      checks.${system}.guest_test = pkgs.callPackage ./nix/pkgs/firecracker/test.nix { };
+      checks.${system} = {
+        guest-rutnime = pkgs.callPackage ./nix/__tests__/guest-runtime.test.nix { };
+      };
     };
 }

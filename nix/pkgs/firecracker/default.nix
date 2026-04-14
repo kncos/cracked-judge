@@ -1,29 +1,9 @@
 {
   pkgs,
-  nixpkgs,
-  isDebug ? false,
-  system ? "x86_64-linux",
+  nixosSystem,
 }:
 let
-  makeDiskImage = import "${pkgs.path}/nixos/lib/make-disk-image.nix";
-
-  nixosSystem = pkgs.callPackage ./nixos-system.nix { inherit nixpkgs isDebug system; };
-
-  rootfs = makeDiskImage {
-    inherit pkgs;
-    lib = pkgs.lib;
-    config = nixosSystem.config;
-
-    diskSize = "auto";
-    additionalSpace = "512M";
-    additionalPaths = [ ];
-    format = "raw";
-    onlyNixStore = false;
-    partitionTableType = "none";
-    installBootLoader = false;
-    touchEFIVars = false;
-    fsType = "ext4";
-  };
+  rootfs = pkgs.callPackage ./rootfs.nix { inherit nixosSystem; };
 
   vm-config = pkgs.callPackage ./vm-config.nix {
     kernelInitBin = "${nixosSystem.config.system.build.toplevel}/init";

@@ -1,16 +1,14 @@
-{ pkgs, lib, ... }:
-let
-
-in
+{ pkgs, ... }:
 pkgs.testers.nixosTest {
-  name = "judge-runtime";
+  name = "guest-runtime-tests";
 
   nodes.machine = {
     imports = [
       ../../modules/guest-test-runtime.nix
-      ../../modules/firecracker-system.nix
     ];
     guest-test-runtime.enable = true;
+    # requires this because we intentionally trigger oom to test isolate
+    boot.kernel.sysctl."vm.panic_on_oom" = 0;
   };
 
   testScript = ''
