@@ -6,17 +6,11 @@ pkgs.testers.nixosTest {
   name = "judge-runtime";
 
   nodes.machine = {
-    imports = [ ./modules/common/isolate.nix ];
-    isolate.enable = true;
-    environment.systemPackages = [
-      (pkgs.callPackage ../cj-guest-test.nix { })
-      (pkgs.callPackage ../isolate-test-program.nix { })
+    imports = [
+      ../../modules/guest-test-runtime.nix
+      ../../modules/firecracker-system.nix
     ];
-
-    boot.kernel.sysctl = {
-      # let oom killer handle it. Isolate tests trigger oom intentionally
-      "vm.panic_on_oom" = 0;
-    };
+    guest-test-runtime.enable = true;
   };
 
   testScript = ''
