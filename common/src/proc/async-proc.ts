@@ -1,7 +1,7 @@
 import type { Logger } from "pino";
-import { CrackedError } from "../cracked-error";
-import { baseLogger, bufferStream } from "../logger";
-import { exitCodeSignalMapping } from "../signal";
+import { CrackedError } from "../lib/cracked-error";
+import { baseLogger, bufferStream } from "../lib/logger";
+import { exitCodeSignalMapping } from "../lib/signal";
 import { invokeCallback, logAndRethrow } from "./utils";
 
 type ProcessResult = {
@@ -66,7 +66,7 @@ const throwUninitializedErr = (): never => {
   });
 };
 
-class AsyncProc implements AsyncDisposable {
+export class AsyncProc implements AsyncDisposable {
   // null until created
   private proc: Bun.Subprocess<"ignore", "pipe", "pipe"> | null = null;
   private isDestroyed: boolean = false;
@@ -286,11 +286,3 @@ class AsyncProc implements AsyncDisposable {
     await this.destroy();
   }
 }
-
-export const createAsyncProc = async (
-  ...params: ConstructorParameters<typeof AsyncProc>
-) => {
-  const proc = new AsyncProc(...params);
-  await proc.create();
-  return proc;
-};

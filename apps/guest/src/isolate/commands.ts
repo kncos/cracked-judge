@@ -1,6 +1,8 @@
-import { fsProcLogHelper } from "@/lib/file-system/utils";
-import { procLogAndMaybeThrow } from "@/lib/utils";
 import { CrackedError } from "@cracked-judge/common";
+import {
+  procLogAndMaybeThrow,
+  procLogHelper,
+} from "@cracked-judge/common/proc";
 import { readFileSync } from "node:fs";
 import path from "path";
 import type z from "zod";
@@ -146,7 +148,7 @@ export const run = (
     return { stdout, stderr, metadata, ...interpretMeta(metadata) };
   } catch (e) {
     const ls = Bun.spawnSync(["ls", "-lR", "/var/lib/isolate/"]);
-    fsProcLogHelper(proc, cmd);
+    procLogHelper(proc, cmd, guestLogger);
     console.log("LS RESULT:", ls.stdout.toString(), ls.stderr.toString());
     throw e;
   }

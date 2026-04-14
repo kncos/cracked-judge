@@ -1,4 +1,4 @@
-import { signalCodeMapping } from "@/lib/signal";
+import { signalCodeMapping } from "@cracked-judge/common";
 import z from "zod";
 import { zIsolateMeta, type JudgeStatus } from "./types";
 

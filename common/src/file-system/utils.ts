@@ -1,9 +1,9 @@
 import * as Bun from "bun";
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { procLogAndMaybeThrow, procLogHelper } from "../../proc/utils";
 import { type CrackedErrorCode } from "../cracked-error";
 import { baseLogger } from "../logger";
-import { procLogAndMaybeThrow, procLogHelper } from "../utils";
 
 export const isMountpoint = (dir: string) => {
   const proc = Bun.spawnSync(["mountpoint", "-q", dir]);

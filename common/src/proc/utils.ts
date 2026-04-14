@@ -1,5 +1,6 @@
 import type { Logger } from "pino";
-import { CrackedError, type CrackedErrorCode } from "../cracked-error";
+import { CrackedError, type CrackedErrorCode } from "../lib/cracked-error";
+import { indentStr, signalExitCodes } from "../lib/utils";
 
 export const invokeCallback = async (params: {
   callback?: () => void | Promise<void>;
@@ -81,3 +82,77 @@ export function logAndRethrow(
 
   throw e;
 }
+export interface Proc {
+  pid: number;
+  exitCode: number;
+  stdout: Buffer;
+  stderr: Buffer;
+  exitedDueToTimeout?: boolean | undefined;
+}
+
+export function procLogHelper(proc: Proc, cmd: string[], logger: Logger) {
+  const { exitCode, stdout, stderr, pid } = proc;
+  const out = procOutputParser(stdout);
+  const err = procOutputParser(stderr);
+  const baseMsg = `Process ${pid} exited with code ${exitCode}.`;
+  const ctx = {
+    out,
+    err,
+    cmd: cmd.join(" "),
+  };
+
+  if (exitCode === 0) {
+    logger.trace(baseMsg);
+  } else if (signalExitCodes[exitCode] !== undefined) {
+    logger.warn(ctx, `${baseMsg} ${signalExitCodes[exitCode]}`);
+  } else {
+    logger.error(ctx, baseMsg);
+  }
+}
+
+export const procLogAndMaybeThrow = (
+  proc: Proc,
+  cmd: string[],
+  code: CrackedErrorCode,
+  msg: string,
+  logger: Logger,
+) => {
+  procLogHelper(proc, cmd, logger);
+  if (proc.exitCode !== 0) {
+    throw new CrackedError(code, {
+      message: procResultFormatter(cmd, proc, msg),
+    });
+  }
+};
+
+export const procResultFormatter = (
+  cmd: string[],
+  proc: Proc,
+  header?: string,
+) => {
+  const body = [
+    `  command: ${cmd.join(" ")}`,
+    `  exit code: ${proc.exitCode}`,
+    `  pid: ${proc.pid}`,
+    `  timed out: ${proc.exitedDueToTimeout ?? false}`,
+    "  stdout:",
+    indentStr(procOutputParser(proc.stdout, 256), 1, ">   "),
+    `  stderr:`,
+    indentStr(procOutputParser(proc.stderr, 256), 1, ">   "),
+  ].join("\n");
+
+  if (header) {
+    return [header, body].join("\n");
+  }
+  return body;
+};
+
+export const procOutputParser = (input: Buffer, maxLen: number = 256) => {
+  const text = input.toString();
+  if (maxLen <= 0) return text;
+
+  if (text.length < maxLen) return text;
+
+  const truncatedEnd = `... (truncated ${text.length - maxLen} chars)`;
+  return `${text.slice(0, maxLen - truncatedEnd.length)}${truncatedEnd}`;
+};
