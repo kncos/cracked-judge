@@ -1,6 +1,6 @@
-import { isReplyError } from "@/types/redis";
 import type { Logger } from "pino";
 import z, { ZodError } from "zod";
+import { isReplyError } from "../types/redis";
 import { baseLogger } from "./logger";
 
 export type CrackedErrorCode =

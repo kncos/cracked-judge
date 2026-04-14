@@ -4,7 +4,7 @@ pkgs.testers.nixosTest {
 
   nodes.machine = {
     imports = [
-      ../../modules/guest-test-runtime.nix
+      ../modules/guest-test-runtime.nix
     ];
     guest-test-runtime.enable = true;
     # requires this because we intentionally trigger oom to test isolate

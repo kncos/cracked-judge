@@ -1,7 +1,7 @@
-import { baseLogger } from "@/lib/logger";
-import { tryCatch } from "@/lib/utils";
 import "ioredis";
 import Redis, { ReplyError } from "ioredis";
+import { baseLogger } from "../lib/logger";
+import { tryCatch } from "../lib/utils";
 
 declare module "ioredis" {
   export interface ReplyError extends Error {

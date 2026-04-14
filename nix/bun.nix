@@ -13,11 +13,11 @@
   ...
 }:
 {
-  "@cracked-judge/common" = copyPathToStore ./common;
-  "@cracked-judge/guest" = copyPathToStore ./apps/guest;
-  "@cracked-judge/host" = copyPathToStore ./apps/host;
-  "@cracked-judge/orchestrator" = copyPathToStore ./apps/orchestrator;
-  "@cracked-judge/server" = copyPathToStore ./apps/server;
+  "@cracked-judge/common" = copyPathToStore ../common;
+  "@cracked-judge/guest" = copyPathToStore ../apps/guest;
+  "@cracked-judge/host" = copyPathToStore ../apps/host;
+  "@cracked-judge/orchestrator" = copyPathToStore ../apps/orchestrator;
+  "@cracked-judge/server" = copyPathToStore ../apps/server;
   "@eslint-community/eslint-utils@4.9.1" = fetchurl {
     url = "https://registry.npmjs.org/@eslint-community/eslint-utils/-/eslint-utils-4.9.1.tgz";
     hash = "sha512-phrYmNiYppR7znFEdqgfWHXR6NCkZEK7hwWDHZUjit/2/U0r6XvkDl0SYnoM51Hq7FhCGdLDT6zxCCOY1hexsQ==";

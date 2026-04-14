@@ -75,11 +75,13 @@
           nixosSystem = self.nixosConfigurations.firecracker-debug;
         };
 
+        guest-test = pkgs.callPackage ./nix/pkgs/cj-guest-test.nix { };
+
         isolate-test-program = pkgs.pkgsStatic.callPackage ./nix/pkgs/isolate-test-program.nix { };
       };
 
       checks.${system} = {
-        guest-rutnime = pkgs.callPackage ./nix/__tests__/guest-runtime.test.nix { };
+        guest-runtime = pkgs.callPackage ./nix/__tests__/guest-runtime.test.nix { };
       };
     };
 }
