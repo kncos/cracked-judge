@@ -2,7 +2,7 @@
   "name": "@cracked-judge/orchestrator",
   "version": "v0.0.1",
   "type": "module",
-  "main": "./src/index.ts",
+  "module": "./src/index.ts",
   "private": true,
   "scripts": {
     "build": "bun build --target bun ./src/index.ts",

@@ -1,9 +1,9 @@
 { pkgs }:
 pkgs.bun2nix.writeBunApplication {
-  pname = "cj-guest-test";
-  version = "1.0.0";
-
-  src = ../../.;
+  src = ../../cracked-judge;
+  bunDeps = pkgs.bun2nix.fetchBunDeps {
+    bunNix = ../bun.nix;
+  };
 
   dontUseBunBuild = true;
   dontUseBunCheck = true;
@@ -15,7 +15,4 @@ pkgs.bun2nix.writeBunApplication {
     bun run test:guest 
   '';
 
-  bunDeps = pkgs.bun2nix.fetchBunDeps {
-    bunNix = ../bun.nix;
-  };
 }

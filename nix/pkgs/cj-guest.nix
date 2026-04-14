@@ -1,11 +1,13 @@
 { pkgs }:
-pkgs.bun2nix.mkDerivation {
-  src = ../../.;
-  pname = "cj-guest";
-  version = "0.1";
-  module = "./apps/guest/src/index.ts";
-
-  bunDeps = pkgs.bun2nix.fetchBunDeps {
-    bunNix = ../bun.nix;
-  };
-}
+pkgs.callPackage ./judge-app.nix { appName = "guest"; }
+# pkgs.bun2nix.mkDerivation {
+#   pname = "cj-guest";
+#   src = ../../cracked-judge;
+#   version = "v1.0.0";
+#   bunDeps = pkgs.bun2nix.fetchBunDeps {
+#     bunNix = ../bun.nix;
+#   };
+#
+#   module = "./apps/guest/src/index.ts";
+# }
+#
