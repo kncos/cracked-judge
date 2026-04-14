@@ -21,8 +21,6 @@ pkgs.testers.nixosTest {
 
   testScript = ''
     machine.wait_for_unit("multi-user.target")
-    result = machine.execute("cj-guest-test")
-    print(result[0])
-    print(result[1])
+    (status, stdout) = machine.execute("cj-guest-test src/guest", True)
   '';
 }
