@@ -1,6 +1,7 @@
 import type { Logger } from "pino";
 import { CrackedError, type CrackedErrorCode } from "../lib/cracked-error";
-import { indentStr, signalExitCodes } from "../lib/utils";
+import { exitCodeSignalMapping } from "../lib/signal";
+import { indentStr } from "../lib/utils";
 
 export const invokeCallback = async (params: {
   callback?: () => void | Promise<void>;
@@ -103,8 +104,8 @@ export function procLogHelper(proc: Proc, cmd: string[], logger: Logger) {
 
   if (exitCode === 0) {
     logger.trace(baseMsg);
-  } else if (signalExitCodes[exitCode] !== undefined) {
-    logger.warn(ctx, `${baseMsg} ${signalExitCodes[exitCode]}`);
+  } else if (exitCodeSignalMapping[exitCode] !== undefined) {
+    logger.warn(ctx, `${baseMsg} ${exitCodeSignalMapping[exitCode]}`);
   } else {
     logger.error(ctx, baseMsg);
   }

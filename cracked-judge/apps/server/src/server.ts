@@ -1,5 +1,5 @@
-import { destroyWithLogging } from "@/lib/destroy-with-logging";
-import { baseLogger } from "@/lib/logger";
+import { serverLogger } from "@/lib/logger";
+import { CrackedError } from "@cracked-judge/common";
 import { onError } from "@orpc/client";
 import { RPCHandler as RPCHandlerWs } from "@orpc/server/bun-ws";
 import { RPCHandler } from "@orpc/server/fetch";
@@ -9,7 +9,6 @@ import { vm } from "./api/vm";
 import { type BaseCtx, type WebsocketCtx } from "./orpc";
 import { RedisManager } from "./typed-redis";
 
-const serverLogger = baseLogger.child({}, { msgPrefix: "[server] " });
 const createHandlers = () => {
   const workerHandler = new RPCHandlerWs<WebsocketCtx>(vm, {
     filter: ({ contract }) => {
@@ -100,15 +99,27 @@ export class Server implements AsyncDisposable {
   };
 
   destroy = async () => {
-    await destroyWithLogging(
-      async () => {
-        await this.server.stop(true);
-        await this.redisManager.destroy();
-      },
-      {
-        label: "Server",
-      },
-    );
+    const delayMs = 5000;
+    const timer = setTimeout(() => {
+      serverLogger.warn(`cleanup still ongoing after ${delayMs}ms`);
+    }, delayMs);
+
+    try {
+      await this.server.stop();
+      await this.redisManager.destroy();
+    } catch (e) {
+      const msg =
+        e instanceof CrackedError
+          ? e.prettyString
+          : ((e as Error)?.message ?? String(e));
+      serverLogger.error(`Encountered exception during cleanup: ${msg}`);
+      throw new CrackedError("RESOURCE_DISPOSAL", {
+        message: "Encountered exception during server cleanup",
+        cause: e,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
   };
 
   async [Symbol.asyncDispose]() {

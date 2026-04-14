@@ -26,16 +26,7 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
 
-    // Path aliases
-    // "paths": {
-    //   "@cracked-judge/common": ["./common/index.ts"],
-    //   "@cracked-judge/common/*": ["./common/*/index.ts"],
-    //   "@cracked-judge/guest": ["./apps/guest/src/index.ts"],
-    //   "@cracked-judge/host": ["./apps/host/src/index.ts"],
-    //   "@cracked-judge/orchestrator": ["./apps/orchestrator/src/index.ts"],
-    //   "@cracked-judge/server": ["./apps/server/src/index.ts"]
-    // },
     "types": ["bun-types"]
-  }
-  // "include": ["apps/**/*", "common/**/*"]
+  },
+  "include": ["apps/**/*", "common/**/*"]
 }

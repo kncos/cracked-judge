@@ -3,7 +3,9 @@ let
   ts-root = ../../cracked-judge;
 in
 pkgs.bun2nix.writeBunApplication {
+  pname = "cj-${appName}-test";
   src = ts-root;
+  packageJson = "${ts-root}/apps/${appName}/package.json";
   bunDeps = pkgs.bun2nix.fetchBunDeps {
     bunNix = ../bun.nix;
   };
@@ -15,7 +17,6 @@ pkgs.bun2nix.writeBunApplication {
   # by either putting it here or at src above or by
   # just separating the host/guest runtimes more cleanly
   startScript = ''
-    bun run test:guest 
+    bun test apps/${appName}
   '';
-
 }

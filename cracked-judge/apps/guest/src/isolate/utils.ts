@@ -1,5 +1,6 @@
-import { signalCodeMapping } from "@cracked-judge/common";
+import { CrackedError, signalCodeMapping } from "@cracked-judge/common";
 import z from "zod";
+import { guestLogger } from "../utils";
 import { zIsolateMeta, type JudgeStatus } from "./types";
 
 export const parseMeta = (fileText: string): z.infer<typeof zIsolateMeta> => {
@@ -13,8 +14,16 @@ export const parseMeta = (fileText: string): z.infer<typeof zIsolateMeta> => {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     .map(([k, ...v]) => [k!.replaceAll("-", "_"), v.join(":")]);
 
-  const meta = zIsolateMeta.parse(Object.fromEntries(entries));
-  return meta;
+  const metaRes = zIsolateMeta.safeParse(Object.fromEntries(entries));
+  if (metaRes.error) {
+    guestLogger.error(z.prettifyError(metaRes.error));
+    throw new CrackedError("PARSE_ERROR", {
+      message: "failed to parse isolate metadata file",
+      cause: metaRes.error,
+    });
+  }
+
+  return metaRes.data;
 };
 
 export const interpretMeta = (

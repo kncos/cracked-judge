@@ -39,12 +39,3 @@ export const indentStr = (
   const _indent = indent.repeat(count);
   return str.replace(/^/gm, _indent);
 };
-
-export const signalExitCodes: Record<number, string> = {
-  130: "SIGINT: Interrupted, did you hit ctrl+c?",
-  135: "SIGBUS: Memory/alignment issue?",
-  137: "SIGKILL: Process was forcefully killed",
-  139: "SIGSEGV: Something went wrong internally to the process",
-  141: "SIGPIPE: Broken pipe",
-  143: "SIGTERM: Process was manually terminated",
-};

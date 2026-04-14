@@ -11,6 +11,7 @@
     "test": "bun test ./"
   },
   "dependencies": {
-    "@cracked-judge/common": "workspace:*"
+    "@cracked-judge/common": "workspace:*",
+    "zod": "^4.3.6"
   }
 }

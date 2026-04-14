@@ -1,4 +1,3 @@
-import { handleError } from "@/lib/cracked-error";
 import { createRedisPool, type RedisPool } from "@/lib/redis-pool";
 import {
   deserializeJob,
@@ -9,27 +8,52 @@ import {
   zJobResult,
   zJobStatus,
 } from "@/server/schemas";
-import { DisposableRedis } from "@/types/redis";
+import { CrackedError } from "@cracked-judge/common";
+
 import { on } from "events";
-import Redis from "ioredis";
-import z from "zod";
-import { baseLogger } from "../lib/logger";
+import Redis, { ReplyError } from "ioredis";
+import z, { ZodError } from "zod/v4";
+import { redisLogger } from "./lib/logger";
 
 export const JOB_QUEUE = "jobs" as const;
 export const JOB_RESULTS = "results" as const;
 
-const redisLogger = baseLogger.child({}, { msgPrefix: "[REDIS] " });
+declare module "ioredis" {
+  export interface ReplyError extends Error {
+    readonly name: "ReplyError";
+    readonly command?: {
+      name: string;
+      args: string[];
+    };
+  }
+}
+
+export const isReplyError = (error: unknown): error is ReplyError => {
+  if (error === null || error === undefined || typeof error !== "object")
+    return false;
+
+  if ("name" in error && error.name === "ReplyError") return true;
+  if (error instanceof ReplyError) return true;
+
+  return false;
+};
+
 const handleRedisError = (
   method: string,
   cause: unknown,
   context?: Record<string, string>,
   log: boolean = true,
 ): never => {
-  return handleError(cause, {
-    context,
-    writeLog: log,
-    logger: redisLogger.child({}, { msgPrefix: `(${method}) ` }),
-  });
+  const err = log
+    ? redisLogger.error.bind(redisLogger)
+    : redisLogger.silent.bind(redisLogger);
+
+  if (isReplyError(cause)) {
+    err(cause.message);
+    throw new CrackedError("REDIS_ERROR", { cause });
+  } else if (cause instanceof ZodError) {
+    err(cause.);
+  }
 };
 
 const keys = {
