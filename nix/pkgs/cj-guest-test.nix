@@ -12,7 +12,7 @@ pkgs.bun2nix.writeBunApplication {
   # by either putting it here or at src above or by
   # just separating the host/guest runtimes more cleanly
   startScript = ''
-    bun test
+    bun run test:guest 
   '';
 
   bunDeps = pkgs.bun2nix.fetchBunDeps {

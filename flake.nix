@@ -75,6 +75,7 @@
           nixosSystem = self.nixosConfigurations.firecracker-debug;
         };
 
+        guest = pkgs.callPackage ./nix/pkgs/cj-guest.nix { };
         guest-test = pkgs.callPackage ./nix/pkgs/cj-guest-test.nix { };
 
         isolate-test-program = pkgs.pkgsStatic.callPackage ./nix/pkgs/isolate-test-program.nix { };

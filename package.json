@@ -8,7 +8,8 @@
     "build:host": "bun build --target=bun --outfile=host.js src/host.ts",
     "build:guest": "bun build --compile --minify --sourcemap src/guest/index.ts --outfile guest/runtime/guest-bin",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test:guest": "bun test apps/guest"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
