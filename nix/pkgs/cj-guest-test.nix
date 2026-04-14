@@ -6,7 +6,7 @@ pkgs.bun2nix.writeBunApplication {
   src = ../../.;
 
   dontUseBunBuild = true;
-  # dontUseBunCheck = true;
+  dontUseBunCheck = true;
 
   # note: we'll have to specify a subdir eventually
   # by either putting it here or at src above or by

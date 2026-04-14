@@ -36,16 +36,43 @@
     in
     {
 
+      nixosConfigurations = {
+        firecracker = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            {
+              guest-runtime.enable = true;
+              nixpkgs.overlays = overlays;
+            }
+            ./nix/modules/firecracker-system.nix
+            ./nix/modules/guest-runtime.nix
+          ];
+        };
+
+        firecracker-debug = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            {
+              guest-test-runtime.enable = true;
+              nixpkgs.overlays = overlays;
+            }
+            ./nix/modules/firecracker-system.nix
+            ./nix/modules/guest-test-runtime.nix
+          ];
+        };
+      };
+
       packages.${system} = {
         default = import ./nix/pkgs/firecracker-host-bundle.nix {
           inherit pkgs nixpkgs system;
         };
 
-        firecracker = pkgs.pkgsStatic.firecracker;
+        firecracker = pkgs.callPackage ./nix/pkgs/firecracker {
+          nixosSystem = self.nixosConfigurations.firecracker;
+        };
 
-        firecracker-debug-bundle = pkgs.callPackage ./nix/pkgs/firecracker {
-          inherit system nixpkgs;
-          isDebug = true;
+        firecracker-debug = pkgs.callPackage ./nix/pkgs/firecracker {
+          nixosSystem = self.nixosConfigurations.firecracker-debug;
         };
 
         isolate-test-program = pkgs.pkgsStatic.callPackage ./nix/pkgs/isolate-test-program.nix { };

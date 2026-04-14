@@ -4,7 +4,7 @@
   nixosSystem,
 }:
 let
-  make-disk-image = import <nixpkgs/nixos/lib/make-disk-image.nix>;
+  make-disk-image = import "${pkgs.path}/nixos/lib/make-disk-image.nix";
 in
 make-disk-image {
   inherit pkgs lib;
