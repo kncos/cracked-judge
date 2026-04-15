@@ -2,44 +2,68 @@ import { oc } from "@orpc/contract";
 import z from "zod";
 import { zIsolateMeta, zIsolateRunOpts } from "./isolate";
 
+export const STATUS_CODES = [
+  "AC",
+  "WA",
+  "TLE",
+  "MLE",
+  "OLE",
+  "RE",
+  "CE",
+  "IE",
+] as const;
+export type StatusCode = (typeof STATUS_CODES)[number];
+
+const zStatus = z.enum(STATUS_CODES);
+
+const zJob = z.object({
+  files: z.file(),
+  isolateOpts: zIsolateRunOpts,
+  returnPayload: z.boolean().optional().default(false),
+});
+
+const zJobResult = z.object({
+  compilerResult: z
+    .object({
+      meta: zIsolateMeta,
+      stdout: z.string(),
+      stderr: z.string(),
+    })
+    .optional(),
+  runtimeResult: z
+    .object({
+      meta: zIsolateMeta,
+      stdout: z.string(),
+      stderr: z.string(),
+    })
+    .optional(),
+  message: z.string(),
+  status: zStatus,
+  payload: z.file().optional(),
+});
+
 export const apiRouterContract = {
-  judge: {
+  user: {
     submit: oc
       .input(
         z.object({
-          submission: z.file(),
-          language: z.enum(["cpp", "python"]),
-        }),
-      )
-      .output(
-        z.object({
-          // display friendly
-          message: z.string(),
-          // stdout + stderr output of the last step that executed, truncated
-          output: z.string(),
-          status: z.enum(["AC", "WA", "TLE", "MLE", "OLE", "RE", "CE", "IE"]),
-        }),
-      ),
-  },
-  execute: {
-    submit: oc
-      .input(
-        z.object({
-          submission: z.file(),
-          dependencyKey: z.string().max(256).optional(),
-          isolateOptions: zIsolateRunOpts,
-          includePayload: z.boolean().optional().default(true),
+          files: z.file(),
         }),
       )
       .output(
         z.object({
           message: z.string(),
-          // zips the sandbox and returns it here if includePayload = true
-          payload: z.file().optional(),
-          isolateMeta: zIsolateMeta,
+          status: zStatus,
           stdout: z.string(),
           stderr: z.string(),
         }),
       ),
+  },
+  admin: {
+    submit: oc.input(zJob).output(zJobResult),
+  },
+  worker: {
+    request: oc.output(zJob),
+    submit: oc.input(zJobResult),
   },
 };
