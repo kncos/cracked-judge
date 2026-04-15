@@ -1,4 +1,5 @@
-import { createRedisPool, type RedisPool } from "@/lib/redis-pool";
+import { CrackedError } from "@cracked-judge/common";
+import { createRedisPool, type RedisPool } from "./redis-pool";
 import {
   deserializeJob,
   deserializeJobResult,
@@ -7,12 +8,12 @@ import {
   zJob,
   zJobResult,
   zJobStatus,
-} from "@/server/schemas";
-import { CrackedError } from "@cracked-judge/common";
+} from "./schemas";
 
 import { on } from "events";
 import Redis, { ReplyError } from "ioredis";
 import z, { ZodError } from "zod/v4";
+import type { DisposableRedis } from "./disposable-redis";
 import { redisLogger } from "./lib/logger";
 
 export const JOB_QUEUE = "jobs" as const;
@@ -49,11 +50,16 @@ const handleRedisError = (
     : redisLogger.silent.bind(redisLogger);
 
   if (isReplyError(cause)) {
-    err(cause.message);
-    throw new CrackedError("REDIS_ERROR", { cause });
+    err({ method, ...context }, cause.message);
   } else if (cause instanceof ZodError) {
-    err(cause.);
+    err({ method, ...context }, z.prettifyError(cause));
+  } else if (cause instanceof Error) {
+    err({ method, ...context }, cause.message);
+  } else {
+    err({ method, cause, ...context }, "unknown error type");
   }
+
+  throw new CrackedError("REDIS_ERROR", { cause });
 };
 
 const keys = {

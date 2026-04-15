@@ -1,5 +1,7 @@
-import { RecursiveDir } from "@/lib/file-system";
-import { fsProcLogAndMaybeThrow } from "@/lib/file-system/utils";
+import {
+  fsProcLogAndMaybeThrow,
+  RecursiveDir,
+} from "@cracked-judge/common/file-system";
 import path from "path";
 import { validateHostConfig, type HostConfig } from "./config";
 

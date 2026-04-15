@@ -1,5 +1,5 @@
-import { CrackedError } from "@/lib/cracked-error";
-import { dirInfo, fileExists } from "@/lib/file-system/utils";
+import { CrackedError } from "@cracked-judge/common";
+import { dirInfo, fileExists } from "@cracked-judge/common/file-system";
 import path from "path";
 import z from "zod";
 

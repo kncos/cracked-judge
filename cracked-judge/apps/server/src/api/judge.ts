@@ -1,4 +1,4 @@
-import { CrackedError, handleError } from "@/lib/cracked-error";
+import { CrackedError } from "@cracked-judge/common";
 import { eventIterator } from "@orpc/server";
 import { publicRoute } from "../orpc";
 import { zJob, zJobStatusOrResult } from "../schemas";
@@ -42,13 +42,14 @@ export const judge = {
           }
         }
       } catch (e) {
-        return handleError(e, {
-          logger: serverLogger,
-          comment: "Encountered exception in judge.submit event loop",
-          context: {
-            str: (e as Error).stack,
-          },
-        });
+        const msg =
+          e instanceof CrackedError
+            ? e.prettyString
+            : ((e as Error).message ?? String(e));
+        serverLogger.error(
+          `Encountered exception in job status iterator: ${msg}`,
+        );
+        throw e;
       }
 
       yield { status: "timed-out", type: "status", id: withId.id };

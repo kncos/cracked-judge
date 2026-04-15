@@ -8,5 +8,9 @@
     },
     "moduleResolution": "bundler"
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*",
+    "../orchestrator/src/firecracker-api.ts",
+    "../orchestrator/src/firecracker-types.ts"
+  ]
 }

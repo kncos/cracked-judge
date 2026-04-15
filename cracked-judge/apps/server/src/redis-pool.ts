@@ -1,8 +1,8 @@
-import { DisposableRedis } from "@/types/redis";
 import genericPool from "generic-pool";
-import { baseLogger } from "./logger";
+import { DisposableRedis } from "./disposable-redis";
+import { redisLogger } from "./lib/logger";
 
-const poolLogger = baseLogger.child({}, { msgPrefix: "[REDIS POOL] " });
+const poolLogger = redisLogger.child({}, { msgPrefix: "(pool) " });
 
 export const redisPoolFactory: genericPool.Factory<DisposableRedis> = {
   create: async function () {

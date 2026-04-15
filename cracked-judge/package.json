@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@orpc/client": "^1.13.6",
+    "@orpc/contract": "^1.13.14",
     "@orpc/server": "^1.13.6",
     "generic-pool": "^3.9.0",
     "ioredis": "^5.10.0",
