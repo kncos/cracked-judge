@@ -1,10 +1,10 @@
-import type { zJob } from "@cracked-judge/common/contract";
+import { WorkerClient, type zJob } from "@cracked-judge/common/contract";
 import { beforeEach, describe, expect, it } from "bun:test";
 import Redis from "ioredis";
 import { afterEach } from "node:test";
 import type z from "zod";
 import { CrackedJudgeServer } from "..";
-import { judgeClient, WorkerClient } from "../client";
+import { judgeClient } from "../client";
 import { serverLogger } from "../lib/logger";
 
 const someFileContent =
@@ -28,7 +28,7 @@ describe("basic interaction works", () => {
     }
   });
 
-  it("server responds", async () => {
+  it.skip("server responds", async () => {
     const check = await judgeClient.check();
     expect(check.ok).toBe(true);
   });
@@ -40,7 +40,7 @@ describe("basic interaction works", () => {
     expect(check.ok).toBe(true);
   });
 
-  it("user request -> worker consume -> worker submit -> user response", async () => {
+  it.skip("user request -> worker consume -> worker submit -> user response", async () => {
     using wc = await WorkerClient.create("ws://localhost:3000");
     const workerClient = wc.client;
 

@@ -12,6 +12,7 @@ export const apiRouterContract = {
       )
       .output(
         z.object({
+          id: z.string(),
           message: z.string(),
           status: zJudgeStatus,
           stdout: z.string(),
