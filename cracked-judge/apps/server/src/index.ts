@@ -1,4 +1,4 @@
-import { CrackedError } from "@cracked-judge/common";
+import { CrackedError, tryCatch } from "@cracked-judge/common";
 import { onError } from "@orpc/client";
 import { RPCHandler as RPCHandlerWs } from "@orpc/server/bun-ws";
 import { RPCHandler } from "@orpc/server/fetch";
@@ -16,7 +16,7 @@ const createHandlers = () => {
     },
     interceptors: [
       onError((error) => {
-        serverLogger.error({ comment: "interceptor" }, String(error));
+        serverLogger.error({ comment: "worker interceptor" }, String(error));
       }),
     ],
   });
@@ -29,7 +29,10 @@ const createHandlers = () => {
     },
     interceptors: [
       onError((error) => {
-        serverLogger.error({ comment: "interceptor" }, String(error));
+        serverLogger.error(
+          { comment: "public interceptor", errMsg: (error as Error).message },
+          (error as Error).stack,
+        );
       }),
     ],
   });
@@ -37,7 +40,7 @@ const createHandlers = () => {
   return { workerHandler, publicHandler };
 };
 
-export class Server implements AsyncDisposable {
+export class CrackedJudgeServer implements AsyncDisposable {
   private static port: number = 3000;
   private constructor(
     private readonly server: Bun.Server<WebsocketCtx>,
@@ -45,14 +48,22 @@ export class Server implements AsyncDisposable {
   ) {}
 
   static create = async () => {
+    serverLogger.info("Creating server");
+
     // handlers
     const { workerHandler, publicHandler } = createHandlers();
     // redisPool, serverLogger
-    const redisManager = await RedisManager.create();
+    const { data: redisManager, error } = await tryCatch(RedisManager.create());
+    if (error) {
+      serverLogger.fatal(`Could not create redisManager: ${error.message}`);
+      throw error;
+    }
 
     const server: Bun.Server<WebsocketCtx> = Bun.serve({
-      port: Server.port,
+      port: CrackedJudgeServer.port,
       async fetch(req, server) {
+        serverLogger.trace("Received fetch request");
+
         const context = { serverLogger, redisManager };
         // public routes
         const pub = await publicHandler.handle(req, { context });
@@ -93,7 +104,7 @@ export class Server implements AsyncDisposable {
       },
     });
 
-    return new Server(server, redisManager);
+    return new CrackedJudgeServer(server, redisManager);
   };
 
   destroy = async () => {
@@ -103,7 +114,7 @@ export class Server implements AsyncDisposable {
     }, delayMs);
 
     try {
-      await this.server.stop();
+      await this.server.stop(true);
       await this.redisManager.destroy();
     } catch (e) {
       const msg =
