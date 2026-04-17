@@ -1,10 +1,13 @@
-import { WorkerClient, type zJob } from "@cracked-judge/common/contract";
+import {
+  createUserClient,
+  WorkerClient,
+  type zJob,
+} from "@cracked-judge/common/contract";
 import { beforeEach, describe, expect, it } from "bun:test";
 import Redis from "ioredis";
 import { afterEach } from "node:test";
 import type z from "zod";
 import { CrackedJudgeServer } from "..";
-import { judgeClient } from "../client";
 import { serverLogger } from "../lib/logger";
 
 const someFileContent =
@@ -29,6 +32,7 @@ describe("basic interaction works", () => {
   });
 
   it.skip("server responds", async () => {
+    const judgeClient = createUserClient("https://localhost:3000");
     const check = await judgeClient.check();
     expect(check.ok).toBe(true);
   });
@@ -41,10 +45,9 @@ describe("basic interaction works", () => {
   });
 
   it.skip("user request -> worker consume -> worker submit -> user response", async () => {
-    using wc = await WorkerClient.create("ws://localhost:3000");
-    const workerClient = wc.client;
-
     const workerSide = async () => {
+      using wc = await WorkerClient.create("ws://localhost:3000");
+      const workerClient = wc.client;
       const start = Date.now();
       // can technically be null
       serverLogger.info("WORKER: test started");
@@ -76,6 +79,7 @@ describe("basic interaction works", () => {
 
     const userSide = async () => {
       serverLogger.info("USER: test started");
+      const judgeClient = createUserClient("https://localhost:3000");
       const res = await judgeClient.submit({
         files: new File([Buffer.from(someFileContent)], "files"),
       });
