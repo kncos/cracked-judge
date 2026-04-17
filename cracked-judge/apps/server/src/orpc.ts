@@ -1,10 +1,9 @@
-import { os } from "@orpc/server";
-import type { Logger } from "pino";
+import { apiRouterContract } from "@cracked-judge/common/contract";
+import { implement } from "@orpc/server";
+import { serverLogger } from "./lib/logger";
 import type { RedisManager } from "./typed-redis";
 
 export type BaseCtx = {
-  //TODO: remove, use logger middleware provided by orpc
-  serverLogger: Logger;
   // redisPool: RedisPool;
   redisManager: RedisManager;
 };
@@ -14,11 +13,9 @@ export type WebsocketCtx = BaseCtx & {
   openedAt: number;
 };
 
-const o = os.$context<BaseCtx>();
+const o = implement(apiRouterContract).$context<BaseCtx>();
 
-const timingMiddleware = o.middleware(async ({ next, context, path }) => {
-  const { serverLogger } = context;
-
+const timingMiddleware = o.middleware(async ({ next, path }) => {
   const start = Date.now();
   const result = await next();
   const end = Date.now();
@@ -29,5 +26,4 @@ const timingMiddleware = o.middleware(async ({ next, context, path }) => {
 });
 
 export const vmRoute = o.$context<WebsocketCtx>().use(timingMiddleware);
-
 export const publicRoute = o.$context<BaseCtx>().use(timingMiddleware);

@@ -1,15 +1,18 @@
 import z from "zod";
 
-export type IsolateCompileResult = {
-  stdout: string;
-  stderr: string;
-  metadata: z.infer<typeof zIsolateMeta>;
-  status: "CE" | "IE" | "AC";
-};
+export const JUDGE_STATUS_CODES = [
+  "IE",
+  "CE",
+  "RE",
+  "MLE",
+  "TLE",
+  "WA",
+  "AC",
+  "OLE",
+] as const;
 
-// quick check to generate an error if these ever become decoupled
-type _t = IsolateCompileResult["status"] extends JudgeStatus ? true : false;
-const _check_t: _t = true;
+type JudgeStatus = (typeof JUDGE_STATUS_CODES)[number];
+export const zJudgeStatus = z.enum(JUDGE_STATUS_CODES);
 
 export type IsolateResult = {
   stdout: string;
@@ -75,12 +78,30 @@ export const zIsolateMeta = z.object({
   time_wall: z.coerce.number(),
 });
 
-export type JudgeStatus =
-  | "IE"
-  | "CE"
-  | "RE"
-  | "MLE"
-  | "TLE"
-  | "WA"
-  | "AC"
-  | "OLE";
+export const zJob = z.object({
+  id: z.string(),
+  files: z.file(),
+  isolateOpts: zIsolateRunOpts,
+  returnPayload: z.boolean().optional().default(false),
+});
+
+export const zJobResult = z.object({
+  id: z.string(),
+  compilerResult: z
+    .object({
+      meta: zIsolateMeta,
+      stdout: z.string(),
+      stderr: z.string(),
+    })
+    .optional(),
+  runtimeResult: z
+    .object({
+      meta: zIsolateMeta,
+      stdout: z.string(),
+      stderr: z.string(),
+    })
+    .optional(),
+  message: z.string(),
+  status: zJudgeStatus,
+  payload: z.file().optional(),
+});

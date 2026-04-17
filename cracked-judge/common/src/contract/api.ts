@@ -1,46 +1,6 @@
 import { oc } from "@orpc/contract";
 import z from "zod";
-import { zIsolateMeta, zIsolateRunOpts } from "./isolate";
-
-export const STATUS_CODES = [
-  "AC",
-  "WA",
-  "TLE",
-  "MLE",
-  "OLE",
-  "RE",
-  "CE",
-  "IE",
-] as const;
-export type StatusCode = (typeof STATUS_CODES)[number];
-
-const zStatus = z.enum(STATUS_CODES);
-
-const zJob = z.object({
-  files: z.file(),
-  isolateOpts: zIsolateRunOpts,
-  returnPayload: z.boolean().optional().default(false),
-});
-
-const zJobResult = z.object({
-  compilerResult: z
-    .object({
-      meta: zIsolateMeta,
-      stdout: z.string(),
-      stderr: z.string(),
-    })
-    .optional(),
-  runtimeResult: z
-    .object({
-      meta: zIsolateMeta,
-      stdout: z.string(),
-      stderr: z.string(),
-    })
-    .optional(),
-  message: z.string(),
-  status: zStatus,
-  payload: z.file().optional(),
-});
+import { zJob, zJobResult, zJudgeStatus } from "./types";
 
 export const apiRouterContract = {
   user: {
@@ -53,7 +13,7 @@ export const apiRouterContract = {
       .output(
         z.object({
           message: z.string(),
-          status: zStatus,
+          status: zJudgeStatus,
           stdout: z.string(),
           stderr: z.string(),
         }),
@@ -63,7 +23,7 @@ export const apiRouterContract = {
     submit: oc.input(zJob).output(zJobResult),
   },
   worker: {
-    request: oc.output(zJob),
+    request: oc.output(zJob.nullable()),
     submit: oc.input(zJobResult),
   },
 };
