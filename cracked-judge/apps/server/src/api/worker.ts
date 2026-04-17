@@ -1,6 +1,6 @@
 import { publicRoute } from "../orpc";
 
-export const vm = {
+export const worker = publicRoute.worker.router({
   submit: publicRoute.worker.submit.handler(async ({ input, context }) => {
     await context.redisManager.enqueueJobResult(input);
   }),
@@ -8,6 +8,4 @@ export const vm = {
     const res = await context.redisManager.dequeueJob();
     return res;
   }),
-};
-
-export type AppRouter = typeof vm;
+});

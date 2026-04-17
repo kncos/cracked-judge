@@ -1,16 +1,15 @@
-import { serverLogger } from "@/lib/logger";
 import { CrackedError } from "@cracked-judge/common";
 import { onError } from "@orpc/client";
 import { RPCHandler as RPCHandlerWs } from "@orpc/server/bun-ws";
 import { RPCHandler } from "@orpc/server/fetch";
-import type { Logger } from "pino";
-import { judge } from "./api/judge";
-import { vm } from "./api/vm";
+import { user } from "./api";
+import { worker } from "./api/worker";
+import { serverLogger } from "./lib/logger";
 import { type BaseCtx, type WebsocketCtx } from "./orpc";
 import { RedisManager } from "./typed-redis";
 
 const createHandlers = () => {
-  const workerHandler = new RPCHandlerWs<WebsocketCtx>(vm, {
+  const workerHandler = new RPCHandlerWs<WebsocketCtx>(worker, {
     filter: ({ contract }) => {
       if (contract["~orpc"].route.tags?.includes("public")) return false;
       return true;
@@ -22,7 +21,7 @@ const createHandlers = () => {
     ],
   });
 
-  const publicHandler = new RPCHandler<BaseCtx>(judge, {
+  const publicHandler = new RPCHandler<BaseCtx>(user, {
     // disallow public routes from matching worker routes
     filter: ({ contract }) => {
       if (contract["~orpc"].route.tags?.includes("worker")) return false;
@@ -42,7 +41,6 @@ export class Server implements AsyncDisposable {
   private static port: number = 3000;
   private constructor(
     private readonly server: Bun.Server<WebsocketCtx>,
-    private readonly serverLogger: Logger,
     private readonly redisManager: RedisManager,
   ) {}
 
@@ -95,7 +93,7 @@ export class Server implements AsyncDisposable {
       },
     });
 
-    return new Server(server, serverLogger, redisManager);
+    return new Server(server, redisManager);
   };
 
   destroy = async () => {

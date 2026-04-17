@@ -3,14 +3,7 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "paths": {
-      "@/*": ["./src/*"]
-    },
     "moduleResolution": "bundler"
   },
-  "include": [
-    "src/**/*",
-    "../orchestrator/src/firecracker-api.ts",
-    "../orchestrator/src/firecracker-types.ts"
-  ]
+  "include": ["src/**/*"]
 }
