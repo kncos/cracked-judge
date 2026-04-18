@@ -12,6 +12,6 @@
       };
     });
 
-    firecracker = prev.callPackage ./pkgs/firecracker-bins.nix { };
+    firecracker = prev.pkgsStatic.callPackage ./pkgs/firecracker-bins.nix { };
   })
 ]
