@@ -1,7 +1,7 @@
 import { CrackedError, signalCodeMapping } from "@cracked-judge/common";
+import { zIsolateMeta, type JudgeStatus } from "@cracked-judge/common/contract";
 import z from "zod";
 import { guestLogger } from "../utils";
-import { zIsolateMeta, type JudgeStatus } from "./types";
 
 export const parseMeta = (fileText: string): z.infer<typeof zIsolateMeta> => {
   const entries = fileText

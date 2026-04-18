@@ -1,11 +1,14 @@
-import type { zJob } from "@cracked-judge/common/contract";
+import type {
+  IsolateResult,
+  zIsolateRunOpts,
+  zJob,
+} from "@cracked-judge/common/contract";
 import { fileExists } from "@cracked-judge/common/file-system";
 import { procLogHelper } from "@cracked-judge/common/proc";
 import * as Bun from "bun";
 import path from "node:path";
 import type z from "../node_modules/zod/v4/classic/external.d.cts";
 import { isolate } from "./isolate/commands";
-import type { IsolateResult } from "./isolate/types";
 import { guestLogger } from "./utils";
 
 //! What happens to stdout.txt and stderr.txt if we do subsequent runs?
@@ -44,9 +47,13 @@ export type IsolateRunResult =
   | { status: "skipped"; res?: undefined }
   | { status: "success" | "failed"; res: IsolateResult };
 
-export const runBoxScript = (realScriptPath: string): IsolateRunResult => {
+export const runBoxScript = (
+  realScriptPath: string,
+  opts: z.infer<typeof zIsolateRunOpts> = {},
+): IsolateRunResult => {
+  const scriptName = path.basename(realScriptPath);
   const res = fileExists(realScriptPath)
-    ? isolate.run({ cmd: ["/bin/sh", "run.sh"] })
+    ? isolate.run(["/bin/sh", scriptName], { ...opts })
     : undefined;
 
   if (!res) {

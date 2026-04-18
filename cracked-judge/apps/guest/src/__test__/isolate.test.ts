@@ -1,6 +1,6 @@
+import type { IsolateResult } from "@cracked-judge/common/contract";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { cleanup, init, run } from "../isolate/commands";
-import type { IsolateResult } from "../isolate/types";
 
 const testbin = "/run/current-system/sw/bin/isolate-test-program";
 const BOX_ID = 0;
@@ -24,7 +24,7 @@ describe("Judge Status Results", () => {
   });
 
   it("AC — clean zero exit", () => {
-    const result = run({ cmd: [testbin, "--exitcode=0"], box_id: BOX_ID });
+    const result = run([testbin, "--exitcode=0"], { box_id: BOX_ID });
     try {
       expect(result.status).toBe("AC");
       expect(result.meta.exitcode).toBe(0);
@@ -36,7 +36,7 @@ describe("Judge Status Results", () => {
   });
 
   it("WA — reserved exit code 69", () => {
-    const result = run({ cmd: [testbin, "--exitcode=69"], box_id: BOX_ID });
+    const result = run([testbin, "--exitcode=69"], { box_id: BOX_ID });
     try {
       expect(result.status).toBe("WA");
       expect(result.meta.exitcode).toBe(69);
@@ -47,7 +47,7 @@ describe("Judge Status Results", () => {
   });
 
   it("RE — non-zero non-69 exit code", () => {
-    const result = run({ cmd: [testbin, "--exitcode=1"], box_id: BOX_ID });
+    const result = run([testbin, "--exitcode=1"], { box_id: BOX_ID });
     try {
       expect(result.status).toBe("RE");
       expect(result.meta.status).toBe("RE");
@@ -59,7 +59,7 @@ describe("Judge Status Results", () => {
   });
 
   it("RE — unhandled exception (panic)", () => {
-    const result = run({ cmd: [testbin, "--throw"], box_id: BOX_ID });
+    const result = run([testbin, "--throw"], { box_id: BOX_ID });
     try {
       expect(result.status).toBe("RE");
     } catch (e) {
@@ -69,7 +69,7 @@ describe("Judge Status Results", () => {
   });
 
   it("RE — segfault (SIGSEGV)", () => {
-    const result = run({ cmd: [testbin, "--exitsig=11"], box_id: BOX_ID });
+    const result = run([testbin, "--exitsig=11"], { box_id: BOX_ID });
     try {
       expect(result.status).toBe("RE");
       expect(result.meta.status).toBe("SG");
@@ -81,7 +81,7 @@ describe("Judge Status Results", () => {
   });
 
   it("TLE — CPU time limit exceeded", () => {
-    const result = run({ cmd: [testbin, "--time=5"], time: 1, box_id: BOX_ID });
+    const result = run([testbin, "--time=5"], { time: 1, box_id: BOX_ID });
     try {
       expect(result.status).toBe("TLE");
       expect(result.meta.status).toBe("TO");
@@ -94,8 +94,7 @@ describe("Judge Status Results", () => {
   });
 
   it("TLE — wall clock time limit exceeded", () => {
-    const result = run({
-      cmd: [testbin, "--sleep=5"],
+    const result = run([testbin, "--sleep=5"], {
       wall_time: 1,
       box_id: BOX_ID,
     });
@@ -112,8 +111,7 @@ describe("Judge Status Results", () => {
   });
 
   it("MLE — exceeds cgroup memory limit", () => {
-    const result = run({
-      cmd: [testbin, "--memory=256"],
+    const result = run([testbin, "--memory=256"], {
       cg_mem: 65536,
       box_id: BOX_ID,
     });
@@ -127,8 +125,7 @@ describe("Judge Status Results", () => {
   });
 
   it("OLE — stdout exceeds fsize limit", () => {
-    const result = run({
-      cmd: [testbin, "--write=64,stdout"],
+    const result = run([testbin, "--write=64,stdout"], {
       fsize: 1024,
       box_id: BOX_ID,
     });
@@ -143,8 +140,7 @@ describe("Judge Status Results", () => {
   });
 
   it("OLE — file write exceeds fsize limit", () => {
-    const result = run({
-      cmd: [testbin, "--write=64,out.bin"],
+    const result = run([testbin, "--write=64,out.bin"], {
       fsize: 1024,
       box_id: BOX_ID,
     });

@@ -11,13 +11,13 @@ export const JUDGE_STATUS_CODES = [
   "OLE",
 ] as const;
 
-type JudgeStatus = (typeof JUDGE_STATUS_CODES)[number];
+export type JudgeStatus = (typeof JUDGE_STATUS_CODES)[number];
 export const zJudgeStatus = z.enum(JUDGE_STATUS_CODES);
 
 export type IsolateResult = {
   stdout: string;
   stderr: string;
-  metadata: z.infer<typeof zIsolateMeta>;
+  meta: z.infer<typeof zIsolateMeta>;
   status: JudgeStatus;
   message: string;
 };
@@ -35,7 +35,7 @@ export type IsolateResult = {
  */
 export const zIsolateRunOpts = z.object({
   // only required param
-  cmd: z.array(z.string().nonempty()).nonempty(),
+  // cmd: z.array(z.string().nonempty()).nonempty(),
   time: z.number().nonnegative().optional(),
   cg_mem: z.int().nonnegative().optional(),
   wall_time: z.number().nonnegative().optional(),
@@ -81,7 +81,7 @@ export const zIsolateMeta = z.object({
 export const zJob = z.object({
   id: z.string(),
   files: z.file(),
-  isolateOpts: zIsolateRunOpts,
+  isolateOpts: zIsolateRunOpts.optional(),
   returnPayload: z.boolean().optional().default(false),
 });
 

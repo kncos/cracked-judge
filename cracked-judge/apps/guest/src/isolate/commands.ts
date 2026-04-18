@@ -1,5 +1,11 @@
 import { CrackedError } from "@cracked-judge/common";
 import {
+  zIsolateMeta,
+  zIsolateRunOpts,
+  type JudgeStatus,
+} from "@cracked-judge/common/contract";
+import { fileExists } from "@cracked-judge/common/file-system";
+import {
   procLogAndMaybeThrow,
   procLogHelper,
 } from "@cracked-judge/common/proc";
@@ -7,7 +13,6 @@ import { readFileSync } from "node:fs";
 import path from "path";
 import type z from "zod";
 import { guestLogger } from "../utils";
-import type { JudgeStatus, zIsolateMeta, zIsolateRunOpts } from "./types";
 import { interpretMeta, parseMeta } from "./utils";
 
 // this is the default path template and is exactly what isolate init
@@ -66,6 +71,7 @@ export const cleanup = (boxid: number = 0) => {
  * @returns
  */
 export const run = (
+  execCmd: string[],
   params: z.infer<typeof zIsolateRunOpts>,
 ): {
   stdout: string;
@@ -103,8 +109,6 @@ export const run = (
     const kAsArg = `--${k.replaceAll("_", "-")}`;
 
     switch (k as keyof typeof params) {
-      case "cmd":
-        continue;
       case "time":
       case "cg_mem":
       case "wall_time":
@@ -134,7 +138,7 @@ export const run = (
   }
 
   // separate isolate args from the command we're running using `--`
-  cmd.push("--", ...params.cmd);
+  cmd.push("--", ...execCmd);
 
   // unused, we don't actually want to run logging on this because
   // it should just exit with a metadata file with the info we need
@@ -142,6 +146,16 @@ export const run = (
 
   // relevant information from the runtime
   try {
+    if (
+      !fileExists(stdoutPath) ||
+      !fileExists(stderrPath) ||
+      !fileExists(metaPath)
+    ) {
+      throw new CrackedError("ISOLATE_RUN", {
+        message: `Missing one of the files: stdout.txt, stderr.txt, metadata.out`,
+      });
+    }
+
     const stdout = readFileSync(stdoutPath).toString("utf-8");
     const stderr = readFileSync(stderrPath).toString("utf-8");
     const meta = parseMeta(readFileSync(metaPath).toString("utf-8"));

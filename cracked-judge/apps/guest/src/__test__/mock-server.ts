@@ -47,7 +47,7 @@ export const createCppPayload = () => {
 
   const compileSh =
     "#!/bin/sh\n" + "set -eux\n" + "g++ -std=gnu++26 -O2 *.cpp -o main\n";
-  const runSh = "#!/bin/sh\n" + "./main";
+  const runSh = "#!/bin/sh\n" + "exec ./main";
 
   const zip = new JSZip();
   zip.file("main.cpp", mainCpp);
@@ -78,7 +78,6 @@ const serverMock = {
       return {
         id: crypto.randomUUID(),
         files,
-        isolateOpts: { cmd: ["/bin/sh", "-c", '"ls -laR"'] },
         returnPayload: false,
       };
     }),

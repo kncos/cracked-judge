@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 pkgs.testers.nixosTest {
   name = "guest-runtime-tests";
 
@@ -15,6 +15,8 @@ pkgs.testers.nixosTest {
       "udev.log_level=3"
       "rd.systemd.show_status=false"
     ];
+    boot.consoleLogLevel = lib.mkForce 3;
+
   };
 
   testScript = ''

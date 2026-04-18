@@ -29,7 +29,11 @@ const main = async () => {
     const { boxPath } = prepareRes;
     const compileScript = path.join(boxPath, "box", "compile.sh");
 
-    const compileRes = runBoxScript(compileScript);
+    const compileRes = runBoxScript(compileScript, {
+      time: 25,
+      wall_time: 30,
+      processes: true,
+    });
     if (compileRes.status === "failed") {
       guestLogger.debug(
         compileRes,
@@ -46,7 +50,7 @@ const main = async () => {
     }
 
     const runScript = path.join(boxPath, "box", "run.sh");
-    const runRes = runBoxScript(runScript);
+    const runRes = runBoxScript(runScript, { ...job.isolateOpts });
     if (runRes.status === "skipped" && compileRes.status === "skipped") {
       const message = "No compile.sh or run.sh was provided. Job was a no-op.";
       guestLogger.debug(message);
