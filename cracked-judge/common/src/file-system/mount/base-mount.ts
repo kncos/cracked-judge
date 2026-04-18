@@ -1,4 +1,4 @@
-import { CrackedError } from "@/lib/cracked-error";
+import { CrackedError } from "../..";
 import { RecursiveDir } from "../directory/recursive-directory";
 import { fsLogger, fsProcLogAndMaybeThrow, isMountpoint } from "../utils";
 

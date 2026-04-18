@@ -1,5 +1,4 @@
-import { CrackedError } from "@/lib/cracked-error";
-import { tryCatchSync } from "@/lib/utils";
+import { CrackedError, tryCatchSync } from "../..";
 import { RecursiveDir } from "../directory";
 import { TempDir } from "../directory/temp-directory";
 import { fsLogger, fsProcLogAndMaybeThrow, isMountpoint } from "../utils";

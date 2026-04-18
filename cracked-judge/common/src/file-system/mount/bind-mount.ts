@@ -1,4 +1,4 @@
-import { CrackedError } from "@/lib/cracked-error";
+import { CrackedError } from "../..";
 import { fsLogger, fsProcLogAndMaybeThrow, isMountpoint } from "../utils";
 import { BaseMount } from "./base-mount";
 

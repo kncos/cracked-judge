@@ -1,5 +1,5 @@
-import { CrackedError } from "@/lib/cracked-error";
 import { writeFileSync } from "fs";
+import { CrackedError } from "../..";
 import { fsLogger, fsProcLogAndMaybeThrow } from "../utils";
 
 export class TempFile implements AsyncDisposable, Disposable {

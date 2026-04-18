@@ -1,5 +1,4 @@
-import { CrackedError } from "../cracked-error";
-import { indentStr } from "../utils";
+import { CrackedError, indentStr } from "..";
 
 export const dependencies = [
   "mount",

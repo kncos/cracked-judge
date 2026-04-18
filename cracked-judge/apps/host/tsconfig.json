@@ -3,9 +3,6 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./dist",
-    "paths": {
-      "@/*": ["./src/*"]
-    },
     "types": ["bun-types"]
   },
   "include": ["src/**/*"]
