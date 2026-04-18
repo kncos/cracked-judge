@@ -70,7 +70,7 @@ export const run = (
 ): {
   stdout: string;
   stderr: string;
-  metadata: z.infer<typeof zIsolateMeta>;
+  meta: z.infer<typeof zIsolateMeta>;
   status: JudgeStatus;
   message: string;
 } => {
@@ -144,8 +144,8 @@ export const run = (
   try {
     const stdout = readFileSync(stdoutPath).toString("utf-8");
     const stderr = readFileSync(stderrPath).toString("utf-8");
-    const metadata = parseMeta(readFileSync(metaPath).toString("utf-8"));
-    return { stdout, stderr, metadata, ...interpretMeta(metadata) };
+    const meta = parseMeta(readFileSync(metaPath).toString("utf-8"));
+    return { stdout, stderr, meta, ...interpretMeta(meta) };
   } catch (e) {
     const ls = Bun.spawnSync(["ls", "-lR", "/var/lib/isolate/"]);
     procLogHelper(proc, cmd, guestLogger);
@@ -153,3 +153,9 @@ export const run = (
     throw e;
   }
 };
+
+export const isolate = {
+  init,
+  run,
+  cleanup,
+} as const;
