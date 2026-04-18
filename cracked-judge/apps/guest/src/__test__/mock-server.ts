@@ -60,7 +60,7 @@ const serverMock = {
   }),
 };
 
-export const createServer = async () => {
+export const createMockServer = async () => {
   const handler = new RPCHandler<CTX>(serverMock, {
     interceptors: [
       onError((e) => {
@@ -104,6 +104,19 @@ export const createServer = async () => {
       },
     },
   });
+  const destroy = async () => {
+    serverLogger.info("destroying server...");
+    await server.stop(true);
+  };
 
-  return server;
+  return {
+    server,
+    destroy,
+    async [Symbol.asyncDispose]() {
+      await destroy();
+    },
+  } satisfies AsyncDisposable & {
+    server: Bun.Server<CTX>;
+    destroy: () => Promise<void>;
+  };
 };

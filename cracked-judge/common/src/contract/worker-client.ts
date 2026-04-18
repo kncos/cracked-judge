@@ -36,7 +36,7 @@ export class WorkerClient implements AsyncDisposable, Disposable {
     private readonly websocket: WebSocket,
   ) {}
 
-  static async create(url: string) {
+  static async create(url: string = "ws://localhost:3000") {
     const websocket = new WebSocket(url);
     await waitForOpen(websocket);
     const wsLink = new RPCLink({ websocket });
