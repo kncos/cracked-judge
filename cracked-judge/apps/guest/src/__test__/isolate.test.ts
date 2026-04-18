@@ -10,8 +10,8 @@ const printres = (input: IsolateResult) => {
   console.log(input.stdout.slice(0, 2048));
   console.log(">>> STDERR:");
   console.log(input.stderr.slice(0, 2048));
-  console.log(">>> METADATA:");
-  console.log(JSON.stringify(input.metadata, null, 2));
+  console.log(">>> meta:");
+  console.log(JSON.stringify(input.meta, null, 2));
 };
 
 describe("Judge Status Results", () => {
@@ -27,8 +27,8 @@ describe("Judge Status Results", () => {
     const result = run({ cmd: [testbin, "--exitcode=0"], box_id: BOX_ID });
     try {
       expect(result.status).toBe("AC");
-      expect(result.metadata.exitcode).toBe(0);
-      expect(result.metadata.killed).toBe(false);
+      expect(result.meta.exitcode).toBe(0);
+      expect(result.meta.killed).toBe(false);
     } catch (e) {
       printres(result);
       throw e;
@@ -39,7 +39,7 @@ describe("Judge Status Results", () => {
     const result = run({ cmd: [testbin, "--exitcode=69"], box_id: BOX_ID });
     try {
       expect(result.status).toBe("WA");
-      expect(result.metadata.exitcode).toBe(69);
+      expect(result.meta.exitcode).toBe(69);
     } catch (e) {
       printres(result);
       throw e;
@@ -50,8 +50,8 @@ describe("Judge Status Results", () => {
     const result = run({ cmd: [testbin, "--exitcode=1"], box_id: BOX_ID });
     try {
       expect(result.status).toBe("RE");
-      expect(result.metadata.status).toBe("RE");
-      expect(result.metadata.exitcode).toBe(1);
+      expect(result.meta.status).toBe("RE");
+      expect(result.meta.exitcode).toBe(1);
     } catch (e) {
       printres(result);
       throw e;
@@ -72,8 +72,8 @@ describe("Judge Status Results", () => {
     const result = run({ cmd: [testbin, "--exitsig=11"], box_id: BOX_ID });
     try {
       expect(result.status).toBe("RE");
-      expect(result.metadata.status).toBe("SG");
-      expect(result.metadata.exitsig).toBeDefined();
+      expect(result.meta.status).toBe("SG");
+      expect(result.meta.exitsig).toBeDefined();
     } catch (e) {
       printres(result);
       throw e;
@@ -84,9 +84,9 @@ describe("Judge Status Results", () => {
     const result = run({ cmd: [testbin, "--time=5"], time: 1, box_id: BOX_ID });
     try {
       expect(result.status).toBe("TLE");
-      expect(result.metadata.status).toBe("TO");
-      expect(result.metadata.killed).toBe(true);
-      expect(result.metadata.time).toBeGreaterThanOrEqual(1);
+      expect(result.meta.status).toBe("TO");
+      expect(result.meta.killed).toBe(true);
+      expect(result.meta.time).toBeGreaterThanOrEqual(1);
     } catch (e) {
       printres(result);
       throw e;
@@ -101,10 +101,10 @@ describe("Judge Status Results", () => {
     });
     try {
       expect(result.status).toBe("TLE");
-      expect(result.metadata.status).toBe("TO");
-      expect(result.metadata.killed).toBe(true);
-      expect(result.metadata.time_wall).toBeGreaterThanOrEqual(1);
-      expect(result.metadata.time).toBeLessThan(0.5);
+      expect(result.meta.status).toBe("TO");
+      expect(result.meta.killed).toBe(true);
+      expect(result.meta.time_wall).toBeGreaterThanOrEqual(1);
+      expect(result.meta.time).toBeLessThan(0.5);
     } catch (e) {
       printres(result);
       throw e;
@@ -119,7 +119,7 @@ describe("Judge Status Results", () => {
     });
     try {
       expect(result.status).toBe("MLE");
-      expect(result.metadata.cg_oom_killed).toBe(true);
+      expect(result.meta.cg_oom_killed).toBe(true);
     } catch (e) {
       printres(result);
       throw e;
@@ -134,8 +134,8 @@ describe("Judge Status Results", () => {
     });
     try {
       expect(result.status).toBe("OLE");
-      expect(result.metadata.status).toBe("SG");
-      expect(result.metadata.exitsig).toBeDefined();
+      expect(result.meta.status).toBe("SG");
+      expect(result.meta.exitsig).toBeDefined();
     } catch (e) {
       printres(result);
       throw e;
@@ -150,8 +150,8 @@ describe("Judge Status Results", () => {
     });
     try {
       expect(result.status).toBe("OLE");
-      expect(result.metadata.status).toBe("SG");
-      expect(result.metadata.exitsig).toBeDefined();
+      expect(result.meta.status).toBe("SG");
+      expect(result.meta.exitsig).toBeDefined();
     } catch (e) {
       printres(result);
       throw e;

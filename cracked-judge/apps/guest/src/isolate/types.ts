@@ -14,7 +14,7 @@ const _check_t: _t = true;
 export type IsolateResult = {
   stdout: string;
   stderr: string;
-  metadata: z.infer<typeof zIsolateMeta>;
+  meta: z.infer<typeof zIsolateMeta>;
   status: JudgeStatus;
   message: string;
 };
