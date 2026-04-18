@@ -4,7 +4,9 @@ import z from "zod";
 test("does Bun.file pass z.file() parser?", async () => {
   const fileContent = "hello, world";
   // create bun file & write to disk
-  const bunfile = Bun.file("temp.txt");
+  const bunfile = Bun.file(
+    `/tmp/crackedjudge-unit-test-${crypto.randomUUID()}`,
+  );
   await bunfile.write(fileContent);
 
   // create File type from bun file

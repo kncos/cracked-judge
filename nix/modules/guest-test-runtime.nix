@@ -23,7 +23,17 @@ in
 
   config = lib.mkIf cfg.enable {
     isolate.enable = true;
-    environment.systemPackages = [
+    environment.systemPackages = with pkgs; [
+      bash
+      gcc15
+      python314
+      file
+      bun
+      socat
+      file
+      zip
+      unzip
+      tree
       (pkgs.callPackage ../pkgs/cj-guest-test.nix { })
       (pkgs.callPackage ../pkgs/isolate-test-program.nix { })
     ];

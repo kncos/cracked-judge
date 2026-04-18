@@ -9,10 +9,16 @@ pkgs.testers.nixosTest {
     guest-test-runtime.enable = true;
     # requires this because we intentionally trigger oom to test isolate
     boot.kernel.sysctl."vm.panic_on_oom" = 0;
+    boot.kernelParams = [
+      "loglevel=3"
+      "quiet"
+      "udev.log_level=3"
+      "rd.systemd.show_status=false"
+    ];
   };
 
   testScript = ''
     machine.wait_for_unit("multi-user.target")
-    (status, stdout) = machine.execute("cj-guest-test src/guest", True)
+    machine.succeed("cj-guest-test")
   '';
 }

@@ -1,13 +1,39 @@
 import { apiRouterContract } from "@cracked-judge/common/contract";
 import { procLogHelper } from "@cracked-judge/common/proc";
-import { implement, onError } from "@orpc/server";
+import { implement, onError, ORPCError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/bun-ws";
 import JSZip from "jszip";
 import path from "path";
+import z, { ZodError } from "zod";
 import { guestLogger } from "../utils";
 
 type CTX = { openedAt: number; workspace: string };
-const oc = implement(apiRouterContract).$context<CTX>();
+const oc = implement(apiRouterContract)
+  .$context<CTX>()
+  .use(
+    onError((error) => {
+      if (
+        error instanceof ORPCError &&
+        error.code === "INTERNAL_SERVER_ERRROR"
+      ) {
+        const zodError =
+          error.cause instanceof ZodError
+            ? error.cause
+            : // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
+              new ZodError((error.cause as any).issues);
+
+        console.error(
+          "-".repeat(16),
+          z.prettifyError(zodError),
+          "-".repeat(16),
+        );
+
+        throw new ORPCError("INTERNAL_SERVER_ERROR", {
+          message: z.prettifyError(zodError),
+        });
+      }
+    }),
+  );
 const serverLogger = guestLogger.child({}, { msgPrefix: "[mock-server] " });
 
 export const createCppPayload = () => {
@@ -42,11 +68,17 @@ const serverMock = {
       }
 
       const { workspace } = context;
-      const file = Bun.file(path.join(workspace, "files.zip"));
+      const bunFile = Bun.file(path.join(workspace, "files.zip"));
+      const files = new File([bunFile], "files.zip");
+      const res = z.file().safeParse(files);
+      if (!res.success) {
+        console.error(`ZOD: malformed file:\n${z.prettifyError(res.error)}`);
+      }
+
       return {
         id: crypto.randomUUID(),
-        files: new File([file], "files.zip"),
-        isolateOpts: { cmd: [] },
+        files,
+        isolateOpts: { cmd: ["/bin/sh", "-c", '"ls -laR"'] },
         returnPayload: false,
       };
     }),
@@ -61,10 +93,26 @@ const serverMock = {
 };
 
 export const createMockServer = async () => {
-  const handler = new RPCHandler<CTX>(serverMock, {
+  const handler = new RPCHandler<CTX>(serverMock.worker, {
     interceptors: [
       onError((e) => {
-        serverLogger.error(`Interceptor Error: ${e}`);
+        const pre = "[interceptor] ";
+        if (e instanceof ZodError) {
+          console.error(`${pre}encountered zod error:` + z.prettifyError(e));
+        } else if (e instanceof Error && e.cause instanceof ZodError) {
+          console.error(
+            `${pre}encountered error ${e}. Cause is zod error:\n` +
+              z.prettifyError(e.cause),
+          );
+        } else if (e instanceof Error) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access
+            const zodError = new ZodError((e.cause as any).issues);
+            console.error(`${pre}ZOD ERROR:`, z.prettifyError(zodError));
+          } catch {
+            console.error(`${pre}Couldn't interpret error. Fallback:`, e);
+          }
+        }
       }),
     ],
   });

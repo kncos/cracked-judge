@@ -51,6 +51,9 @@
       bun
       socat
       file
+      zip
+      unzip
+      tree
     ];
   };
 

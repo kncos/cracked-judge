@@ -55,6 +55,7 @@
             {
               guest-test-runtime.enable = true;
               nixpkgs.overlays = overlays;
+              boot.kernelParams = [ "loglevel=3" ];
             }
             ./nix/modules/firecracker-system.nix
             ./nix/modules/guest-test-runtime.nix
