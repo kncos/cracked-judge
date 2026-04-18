@@ -92,7 +92,7 @@ const main = async () => {
       status: runtimeResult?.status ?? compilerResult?.status ?? "IE",
       compilerResult,
       runtimeResult,
-      payload: payload as File,
+      payload: payload ? new File([payload], "payload.zip") : payload,
     });
   }
 };
