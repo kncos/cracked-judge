@@ -34,7 +34,7 @@ export const createFirecrackerClient = (params: {
       };
 
       const { data: response, error: fetchErr } = await tryCatch(
-        Bun.fetch(input, { unix: socket, verbose: true }),
+        Bun.fetch(input, { unix: socket }),
       );
 
       // handle the case where fetch itself fails

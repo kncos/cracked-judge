@@ -15,7 +15,7 @@ export const createVmPool = async (config: HostConfig) => {
     },
     destroy: async function (vm) {
       vmLogger.debug("VM POOL: Destroy started");
-      await vm[Symbol.asyncDispose]();
+      await vm.destroy();
       vmLogger.debug("VM POOL: Destroy finished");
     },
     // validate: async function (vm) {
@@ -33,11 +33,6 @@ export const createVmPool = async (config: HostConfig) => {
     max: config.vmCount,
   });
 
-  (pool as typeof pool & AsyncDisposable)[Symbol.asyncDispose] = async () => {
-    await pool.drain();
-    await pool.clear();
-  };
-
   await pool.ready();
-  return pool as typeof pool & AsyncDisposable;
+  return pool;
 };

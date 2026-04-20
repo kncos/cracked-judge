@@ -1,3 +1,7 @@
+import ADS from "disposablestack/AsyncDisposableStack/implementation";
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+globalThis.AsyncDisposableStack = ADS;
+
 import { manualWhich } from "@cracked-judge/common/file-system";
 import { readFileSync } from "fs";
 import z, { ZodError } from "zod";
@@ -46,7 +50,6 @@ const main = async () => {
     vmLogger.info(config, "Used config:");
   }
 
-  const stack = new AsyncDisposableStack();
   // cleaned up after the controller aborts
   const fs = new HostFilesystem(config);
   const pool = await createVmPool(config);
@@ -71,7 +74,8 @@ const main = async () => {
     signal.addEventListener("abort", onAbort, { once: true });
   });
 
-  await pool[Symbol.asyncDispose]();
+  await pool.drain();
+  await pool.clear();
   fs.destroy();
 };
 

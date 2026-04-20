@@ -1,4 +1,4 @@
-import { CrackedError, tryCatch } from "@cracked-judge/common";
+import { CrackedError } from "@cracked-judge/common";
 import {
   BindMount,
   OverlayMount,
@@ -6,6 +6,7 @@ import {
   fileExists,
 } from "@cracked-judge/common/file-system";
 import { createAsyncProc } from "@cracked-judge/common/proc";
+import { $ } from "bun";
 import { join } from "path";
 import type { HostConfig } from "./config";
 import { createFirecrackerClient } from "./firecracker-api";
@@ -15,7 +16,8 @@ const UID = "60000" as const;
 const GID = "60000" as const;
 
 class VM implements AsyncDisposable {
-  private stack: AsyncDisposableStack = new AsyncDisposableStack();
+  // private stack: AsyncDisposableStack = new AsyncDisposableStack();
+  private stack: AsyncDisposable[] = [];
   private readonly vmProcCmd: string[];
 
   private readonly guestInitiatedSockPath: string;
@@ -38,7 +40,7 @@ class VM implements AsyncDisposable {
     const hostRunDir = join(runtimeRoot, "run", vmId);
     const vmRunDir = join(jailerRoot, "firecracker", vmId, "root", "run");
     const runMount = new BindMount(hostRunDir, vmRunDir, UID, GID);
-    this.stack.use(runMount);
+    this.stack.push(runMount);
     vmLogger.debug("Created Bind Mount for VM runtime files");
 
     // overlay mount to expose dependencies to the VM and allow it to
@@ -55,7 +57,7 @@ class VM implements AsyncDisposable {
       depsMountUpperdir,
       depsMountWorkdir,
     );
-    this.stack.use(depsMount);
+    this.stack.push(depsMount);
     vmLogger.debug("Created Overlay Mount");
 
     // change permissions in the overlay; this modifies the overlayfs layer
@@ -113,10 +115,18 @@ class VM implements AsyncDisposable {
         killSignal: "SIGINT",
         logger: vmLogger.child({}, { msgPrefix: `[SOCAT] (vm: ${vmId}) ` }),
       });
-      this.stack.use(socketProc);
+      this.stack.push(socketProc);
       vmLogger.debug("Created socket proc");
 
       const firecrackerSockPath = this.firecrackerSockPath;
+      const api = createFirecrackerClient({
+        socket: this.firecrackerSockPath,
+        vmId: vmId,
+        fcLogger: vmLogger.child(
+          { vmId },
+          { msgPrefix: `[FIRECRACKER API] (post-create) ` },
+        ),
+      });
 
       const vmProc = await createAsyncProc({
         cmd: this.vmProcCmd,
@@ -124,29 +134,11 @@ class VM implements AsyncDisposable {
         // to firecracker, which should cause the VM to gracefully shut down
 
         async postCreate() {
-          const api = createFirecrackerClient({
-            socket: firecrackerSockPath,
-            vmId: vmId,
-            fcLogger: vmLogger.child(
-              { vmId },
-              { msgPrefix: `[FIRECRACKER API] (post-create) ` },
-            ),
-          });
-
-          await Bun.sleep(3000);
-          const { data, error } = await tryCatch(api.GET("/"));
+          // await Bun.sleep(3000);
+          // await tryCatch(api.GET("/"));
         },
 
         async preDestroy(proc) {
-          const api = createFirecrackerClient({
-            socket: firecrackerSockPath,
-            vmId: vmId,
-            fcLogger: vmLogger.child(
-              { vmId },
-              { msgPrefix: `[FIRECRACKER API] (pre-destroy) ` },
-            ),
-          });
-
           try {
             if (!fileExists(firecrackerSockPath)) {
               vmLogger.error(
@@ -154,13 +146,34 @@ class VM implements AsyncDisposable {
               );
             }
 
-            await api.PUT("/actions", {
-              body: { action_type: "SendCtrlAltDel" },
+            const res = await $`stat ${firecrackerSockPath}`.nothrow();
+            console.error(res.stdout.toString());
+            console.error(res.stderr.toString());
+
+            // await api.PUT("/actions", {
+            //   body: { action_type: "SendCtrlAltDel" },
+            // });
+            const proc = await createAsyncProc({
+              cmd: [
+                "curl",
+                "--unix-socket",
+                firecrackerSockPath,
+                "-X",
+                "PUT",
+                "http://localhost/actions",
+                "-H",
+                "Content-Type: application/json", // no quotes needed in array form
+                "-d",
+                '{"action_type": "SendCtrlAltDel"}', // no escaping needed either
+              ],
+              logger: vmLogger.child({}, { msgPrefix: "CURL: " }),
             });
+            await proc.getExitResult();
+
             // wait for it to be killed for 1000ms,
             // for firecracker that *should* be enough... presumably
             // if this fails, AsyncProc kills it forcefully
-            await Promise.race([Bun.sleep(1000), proc.getExitResult()]);
+            // await Promise.race([Bun.sleep(1000), proc.getExitResult()]);
           } catch (error) {
             vmLogger.error(
               {
@@ -184,7 +197,7 @@ class VM implements AsyncDisposable {
           );
         },
       });
-      this.stack.use(vmProc);
+      this.stack.push(vmProc);
       vmLogger.debug("Created vm proc");
     } catch (e) {
       await this.destroy();
@@ -208,7 +221,13 @@ class VM implements AsyncDisposable {
     }, timeoutMs);
 
     try {
-      await this.stack.disposeAsync();
+      for (const item of this.stack.toReversed()) {
+        try {
+          await item[Symbol.asyncDispose]();
+        } catch (e) {
+          vmLogger.error(`Encountered exception during teardown: ${e}`);
+        }
+      }
     } catch (e) {
       const baseMsg =
         e instanceof CrackedError
@@ -223,6 +242,7 @@ class VM implements AsyncDisposable {
       });
     } finally {
       clearTimeout(timer);
+      vmLogger.info(`${this.vmId} destruction complete`);
     }
   };
 

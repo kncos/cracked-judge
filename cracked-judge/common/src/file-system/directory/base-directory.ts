@@ -32,6 +32,7 @@ export abstract class BaseDir implements IDir {
       return;
     }
 
+    fsLogger.debug(`Destroying directory at ${this.dir}`);
     this.performDestroy();
   };
 
