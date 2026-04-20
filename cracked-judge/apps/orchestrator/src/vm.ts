@@ -130,14 +130,6 @@ class VM implements AsyncDisposable {
 
       const vmProc = await createAsyncProc({
         cmd: this.vmProcCmd,
-        // before destroying the VM, send the ctrl+alt+delete signal
-        // to firecracker, which should cause the VM to gracefully shut down
-
-        async postCreate() {
-          // await Bun.sleep(3000);
-          // await tryCatch(api.GET("/"));
-        },
-
         async preDestroy(proc) {
           try {
             if (!fileExists(firecrackerSockPath)) {
@@ -150,30 +142,14 @@ class VM implements AsyncDisposable {
             console.error(res.stdout.toString());
             console.error(res.stderr.toString());
 
-            // await api.PUT("/actions", {
-            //   body: { action_type: "SendCtrlAltDel" },
-            // });
-            const proc = await createAsyncProc({
-              cmd: [
-                "curl",
-                "--unix-socket",
-                firecrackerSockPath,
-                "-X",
-                "PUT",
-                "http://localhost/actions",
-                "-H",
-                "Content-Type: application/json", // no quotes needed in array form
-                "-d",
-                '{"action_type": "SendCtrlAltDel"}', // no escaping needed either
-              ],
-              logger: vmLogger.child({}, { msgPrefix: "CURL: " }),
+            await api.PUT("/actions", {
+              body: { action_type: "SendCtrlAltDel" },
             });
-            await proc.getExitResult();
 
             // wait for it to be killed for 1000ms,
             // for firecracker that *should* be enough... presumably
             // if this fails, AsyncProc kills it forcefully
-            // await Promise.race([Bun.sleep(1000), proc.getExitResult()]);
+            await Promise.race([Bun.sleep(1000), proc.getExitResult()]);
           } catch (error) {
             vmLogger.error(
               {

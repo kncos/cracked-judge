@@ -184,6 +184,7 @@ export class AsyncProc implements AsyncDisposable {
         cmd: [...this.cmd],
         stderr: "pipe",
         stdout: "pipe",
+        detached: true,
         async onExit(subprocess) {
           console.error(`Process has exited: ${command}`);
           // TODO: handle hang?

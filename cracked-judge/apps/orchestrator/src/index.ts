@@ -49,12 +49,21 @@ const main = async () => {
   } else {
     vmLogger.info(config, "Used config:");
   }
-
   // cleaned up after the controller aborts
   const fs = new HostFilesystem(config);
   const pool = await createVmPool(config);
 
   const controller = new AbortController();
+  const signal = controller.signal;
+
+  // Setup stdin listener
+  process.stdin.setEncoding("utf-8");
+  process.stdin.on("data", (data: string) => {
+    if (data.trim().toLowerCase() === "exit") {
+      controller.abort();
+    }
+  });
+
   process.on("SIGINT", () => {
     controller.abort();
   });
@@ -62,15 +71,18 @@ const main = async () => {
     controller.abort();
   });
 
-  const signal = controller.signal;
   await new Promise<void>((resolve) => {
     if (signal.aborted) {
       resolve();
+      return;
     }
+
     const onAbort = () => {
-      signal.removeEventListener("abort", onAbort);
+      // Clean up stdin listener to allow the process to exit naturally
+      process.stdin.pause();
       resolve();
     };
+
     signal.addEventListener("abort", onAbort, { once: true });
   });
 

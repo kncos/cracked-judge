@@ -8,7 +8,7 @@ const prettyStream = pretty({
 
 export const baseLogger = pino(
   {
-    level: "debug",
+    level: "trace",
   },
   prettyStream,
 );
