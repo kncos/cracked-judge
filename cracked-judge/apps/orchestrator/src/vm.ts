@@ -1,4 +1,4 @@
-import { CrackedError } from "@cracked-judge/common";
+import { CrackedError, tryCatch } from "@cracked-judge/common";
 import {
   BindMount,
   OverlayMount,
@@ -123,13 +123,27 @@ class VM implements AsyncDisposable {
         // before destroying the VM, send the ctrl+alt+delete signal
         // to firecracker, which should cause the VM to gracefully shut down
 
+        async postCreate() {
+          const api = createFirecrackerClient({
+            socket: firecrackerSockPath,
+            vmId: vmId,
+            fcLogger: vmLogger.child(
+              { vmId },
+              { msgPrefix: `[FIRECRACKER API] (post-create) ` },
+            ),
+          });
+
+          await Bun.sleep(3000);
+          const { data, error } = await tryCatch(api.GET("/"));
+        },
+
         async preDestroy(proc) {
           const api = createFirecrackerClient({
             socket: firecrackerSockPath,
             vmId: vmId,
             fcLogger: vmLogger.child(
-              {},
-              { msgPrefix: `[FIRECRACKER API] (vm: ${vmId}) ` },
+              { vmId },
+              { msgPrefix: `[FIRECRACKER API] (pre-destroy) ` },
             ),
           });
 

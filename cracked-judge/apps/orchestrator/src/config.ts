@@ -8,7 +8,7 @@ export const zHostConfig = z.object({
   runtimeRoot: z
     .string()
     .optional()
-    .transform((str) => (str ? path.resolve(str) : "/run/cracked-judge")),
+    .transform((str) => (str ? path.resolve(str) : "/var/lib/cracked-judge")),
 
   // We can accept literal paths to jailer & firecracker, and if not provided
   // we just assume they are in the PATH and can be accessed directly
@@ -21,6 +21,8 @@ export const zHostConfig = z.object({
     .string()
     .optional()
     .transform((str) => (str ? path.resolve(str) : "firecracker")),
+
+  vmCount: z.number().optional().default(1),
 });
 
 export type HostConfig = z.infer<typeof zHostConfig>;

@@ -18,21 +18,26 @@ export const createVmPool = async (config: HostConfig) => {
       await vm[Symbol.asyncDispose]();
       vmLogger.debug("VM POOL: Destroy finished");
     },
-    validate: async function (vm) {
-      vmLogger.debug("VM POOL: Validate started");
-      const valid = await Promise.resolve(!vm.isDestroyed);
-      vmLogger.debug("VM POOL: Validate finished");
-      return valid;
-    },
+    // validate: async function (vm) {
+    //   vmLogger.debug("VM POOL: Validate started");
+    //   const valid = await Promise.resolve(!vm.isDestroyed);
+    //   vmLogger.debug("VM POOL: Validate finished");
+    //   return valid;
+    // },
   };
 
   const pool = genericPool.createPool(vmPoolFactory, {
-    testOnBorrow: true,
-    testOnReturn: true,
-    min: 1,
-    max: 32,
+    // testOnBorrow: true,
+    // testOnReturn: true,
+    min: config.vmCount,
+    max: config.vmCount,
   });
 
+  (pool as typeof pool & AsyncDisposable)[Symbol.asyncDispose] = async () => {
+    await pool.drain();
+    await pool.clear();
+  };
+
   await pool.ready();
-  return pool;
+  return pool as typeof pool & AsyncDisposable;
 };

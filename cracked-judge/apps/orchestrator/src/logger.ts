@@ -3,7 +3,7 @@ import pretty from "pino-pretty";
 
 const prettyStream = pretty({
   colorize: true,
-  sync: false,
+  sync: true,
 });
 
 export const vmLogger = pino(
