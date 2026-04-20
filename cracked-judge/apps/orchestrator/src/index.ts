@@ -1,7 +1,3 @@
-import ADS from "disposablestack/AsyncDisposableStack/implementation";
-// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-globalThis.AsyncDisposableStack = ADS;
-
 import { manualWhich } from "@cracked-judge/common/file-system";
 import { readFileSync } from "fs";
 import z, { ZodError } from "zod";
@@ -28,11 +24,7 @@ const main = async () => {
     }
 
     try {
-      console.error("got here");
       const file = readFileSync(configPath).toString("utf-8");
-      console.error("got here");
-      console.log(file);
-      console.error("got here");
 
       const config = zHostConfig.parse(JSON.parse(file));
       return [config, false] as const;

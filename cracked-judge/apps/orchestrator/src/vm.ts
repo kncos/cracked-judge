@@ -6,7 +6,6 @@ import {
   fileExists,
 } from "@cracked-judge/common/file-system";
 import { createAsyncProc } from "@cracked-judge/common/proc";
-import { $ } from "bun";
 import { join } from "path";
 import type { HostConfig } from "./config";
 import { createFirecrackerClient } from "./firecracker-api";
@@ -137,10 +136,6 @@ class VM implements AsyncDisposable {
                 `Firecracker socket doesn't exist! path: ${firecrackerSockPath}`,
               );
             }
-
-            const res = await $`stat ${firecrackerSockPath}`.nothrow();
-            console.error(res.stdout.toString());
-            console.error(res.stderr.toString());
 
             await api.PUT("/actions", {
               body: { action_type: "SendCtrlAltDel" },

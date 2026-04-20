@@ -178,7 +178,6 @@ export class AsyncProc implements AsyncDisposable {
         );
       };
 
-      const command = this.cmd;
       this.proc = Bun.spawn({
         // fixes type err with readonly
         cmd: [...this.cmd],
@@ -186,7 +185,6 @@ export class AsyncProc implements AsyncDisposable {
         stdout: "pipe",
         detached: true,
         async onExit(subprocess) {
-          console.error(`Process has exited: ${command}`);
           // TODO: handle hang?
           // note: onExit can be called before the subprocess has even exited (timing/race condition).
           // Furthermore, the process.exited promise can resolve while .exitCode and .signal are still null
@@ -287,6 +285,5 @@ export class AsyncProc implements AsyncDisposable {
 
   async [Symbol.asyncDispose]() {
     await this.destroy();
-    this.loggerOpts.logger.info({ cmd: this.cmd }, `Tore down process`);
   }
 }
