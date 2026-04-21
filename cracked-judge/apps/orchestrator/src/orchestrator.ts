@@ -18,12 +18,12 @@ export const createVmPool = async (config: HostConfig) => {
       await vm.destroy();
       vmLogger.debug("VM POOL: Destroy finished");
     },
-    // validate: async function (vm) {
-    //   vmLogger.debug("VM POOL: Validate started");
-    //   const valid = await Promise.resolve(!vm.isDestroyed);
-    //   vmLogger.debug("VM POOL: Validate finished");
-    //   return valid;
-    // },
+    validate: async function (vm) {
+      vmLogger.debug("VM POOL: Validate started");
+      const valid = await Promise.resolve(!vm.isDestroyed);
+      vmLogger.debug("VM POOL: Validate finished");
+      return valid;
+    },
   };
 
   const pool = genericPool.createPool(vmPoolFactory, {
