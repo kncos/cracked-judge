@@ -52,6 +52,7 @@ export abstract class BaseMount implements IMount {
 
   [Symbol.dispose]() {
     try {
+      fsLogger.debug(`Destroying mount at: ${this.guestDir}`);
       this.destroy();
     } catch (e) {
       throw new CrackedError("RESOURCE_DISPOSAL", {

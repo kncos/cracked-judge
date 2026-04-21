@@ -53,7 +53,7 @@ export const manualWhich = (
   for (const d of dirs) {
     const joined = path.join(d, fileName);
     if (fileExists(joined)) {
-      return joined;
+      return path.resolve(joined);
     }
   }
   return null;

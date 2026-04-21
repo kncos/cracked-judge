@@ -183,6 +183,7 @@ export class AsyncProc implements AsyncDisposable {
         cmd: [...this.cmd],
         stderr: "pipe",
         stdout: "pipe",
+        detached: true,
         async onExit(subprocess) {
           // TODO: handle hang?
           // note: onExit can be called before the subprocess has even exited (timing/race condition).
