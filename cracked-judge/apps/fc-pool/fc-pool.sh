@@ -20,6 +20,9 @@ get_vars() {
   VM_JAIL_DIR="${VMROOT}/jail/firecracker/${VM_IDX}"
   VM_RUN_DIR="${VMROOT}/run/${VM_IDX}"
   BINS_DIR="${VMROOT}/bin"
+
+  VM_UID=60000
+  VM_GID=60000
 }
 
 setup_network() {
@@ -90,14 +93,14 @@ setup_vm_fs() {
   mkdir -p "${VM_JAIL_DIR}/root/run"
   mkdir -p "${VM_RUN_DIR}"
   mount --bind \
-    --map-users 0:60000:65534 \
-    --map-groups 0:60000:65534 \
+    --map-users 0:${VM_UID}:65534 \
+    --map-groups 0:${VM_UID}:65534 \
     "${VM_RUN_DIR}" "${VM_JAIL_DIR}/root/run"
 
   # overlay mount 
   mkdir -p "${VM_JAIL_DIR}/root/"
   cp -r --reflink=auto "${VMROOT}/deps/" -t "${VM_JAIL_DIR}/root/"
-  chown -R 60000:60000 "${VM_JAIL_DIR}/root/deps"
+  chown -R ${VM_UID}:${VM_GID} "${VM_JAIL_DIR}/root/deps"
 }
 
 
@@ -113,8 +116,8 @@ start_vm() {
   setup_network $1
 
   exec "${BINS_DIR}/jailer" \
-    --uid 60000 \
-    --gid 60000 \
+    --uid $VM_UID \
+    --gid $VM_GID \
     --id $VM_IDX \
     --netns "/var/run/netns/${NS}" \
     --exec-file "${BINS_DIR}/firecracker" \
