@@ -67,7 +67,7 @@
         };
       };
 
-      packages.${system} = rec {
+      packages.${system} = {
         default = import ./nix/pkgs/firecracker-host-bundle.nix {
           inherit pkgs nixpkgs system;
         };
@@ -82,11 +82,6 @@
 
         firecracker-vm-mgr = pkgs.callPackage ./nix/pkgs/firecracker-vm-mgr.nix { };
 
-        firecracker-vm-mgr-test = pkgs.callPackage ./nix/pkgs/cj-guest-test.nix {
-          # just reuse firecracker
-          firecracker-bundle = firecracker-debug;
-        };
-
         guest = pkgs.callPackage ./nix/pkgs/cj-guest.nix { };
         guest-test = pkgs.callPackage ./nix/pkgs/cj-guest-test.nix { };
 
@@ -95,6 +90,9 @@
 
       checks.${system} = {
         guest-runtime = pkgs.callPackage ./nix/__tests__/guest-runtime.test.nix { };
+        firecracker-vm-mgr = pkgs.callPackage ./nix/__tests__/firecracker-vm-mgr.test.nix {
+          firecracker-bundle = self.packages.${system}.firecracker-debug;
+        };
       };
     };
 }

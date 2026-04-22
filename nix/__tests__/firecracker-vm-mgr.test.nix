@@ -9,6 +9,7 @@ pkgs.testers.nixosTest {
 
   nodes.machine = {
     imports = [
+      ./base-config.nix
       ../modules/firecracker-vm-mgr.nix
     ];
 
@@ -18,16 +19,6 @@ pkgs.testers.nixosTest {
       enable = true;
       num-workers = 1;
     };
-
-    # requires this because we intentionally trigger oom to test isolate
-    boot.kernel.sysctl."vm.panic_on_oom" = 0;
-    boot.kernelParams = [
-      "loglevel=3"
-      "quiet"
-      "udev.log_level=3"
-      "rd.systemd.show_status=false"
-    ];
-    boot.consoleLogLevel = lib.mkForce 3;
   };
 
   testScript = ''

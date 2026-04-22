@@ -14,7 +14,7 @@ in
     enable = lib.mkEnableOption "Installs the firecracker-vm-mgr service";
 
     num-workers = lib.mkOption {
-      type = lib.types.nullOr lib.types.ints.between 0 256;
+      type = lib.types.ints.between 0 256;
       default = 0;
       description = ''
         Number of VMs to spawn (starts systemd firecracker-vm@.service units).
@@ -38,14 +38,24 @@ in
     # using this for debugging mostly
     environment.systemPackages = [ firecracker-vm-mgr ];
 
-    fileSystems."/var/lib/cracked-judge/deps" = {
-      device = "${cfg.firecracker-bundle}";
-      fsType = "none";
-      options = [
-        "bind"
-        "ro"
-      ];
-    };
+    #systemd.tmpfiles.rules = [
+    #  "d /var/lib/cracked-judge/deps 0755 root root -"
+    #];
+
+    systemd.mounts = [
+      {
+        enable = true;
+        description = "Bind mount firecracker bundle";
+        what = "${cfg.firecracker-bundle}";
+        where = "/var/lib/cracked-judge/deps";
+        type = "none";
+        options = "bind,ro";
+        unitConfig = {
+          DefaultDependencies = "no";
+        };
+        wantedBy = [ "firecracker-pool.target" ];
+      }
+    ];
 
     systemd.services."firecracker-vm@" = {
       description = "Firecracker VM %i";
@@ -64,8 +74,11 @@ in
       };
     };
 
-    systemd.targets.multi-user.wants = builtins.genList (
-      i: "firecracker-vm@${toString i}.service"
-    ) cfg.num-workers;
+    systemd.targets."firecracker-pool" = {
+      description = "All Firecracker VMs";
+      wantedBy = [ "multi-user.target" ];
+      wants = builtins.genList (i: "firecracker-vm@${toString i}.service") cfg.num-workers;
+      after = builtins.genList (i: "firecracker-vm@${toString i}.service") cfg.num-workers;
+    };
   };
 }

@@ -117,8 +117,8 @@ setup_vm_fs() {
   cp -r --reflink=auto "${VMROOT}/deps/" -t "${VM_JAIL_DIR}/root/"
   chown -R "${VM_UID}:${VM_GID}" "${VM_JAIL_DIR}/root/deps"
   # /{vmroot}/deps might be a ro bind mount from /nix/store or something, fix perms:
-  find "${VM_JAIL_DIR}/root/deps" -type d -exec chmod 755 {}
-  find "${VM_JAIL_DIR}/root/deps" -type f -exec chmod 644 {}
+  find "${VM_JAIL_DIR}/root/deps" -type d -exec chmod 755 {} \;
+  find "${VM_JAIL_DIR}/root/deps" -type f -exec chmod 644 {} \;
 }
 
 
