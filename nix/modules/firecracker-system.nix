@@ -1,7 +1,6 @@
-{ pkgs, ... }:
+{ pkgs, lib, ... }:
 
 {
-  #* note: simplified this significantly, we'll see if it still works
   boot = {
     # loader.grub.enable = false;
     kernel = {
@@ -84,26 +83,7 @@
   # socat, which is how it speaks to the outside world. The host
   # is the listener which decides how to interpret that traffic
   networking = {
-    enableIPv6 = false;
     useDHCP = false;
-    hostName = "judge";
-
-    interfaces.eth0 = {
-      ipv4.addresses = [
-        {
-          # guest side tap ip
-          address = "192.168.241.2";
-          prefixLength = 29;
-        }
-      ];
-    };
-
-    defaultGateway = {
-      address = "192.168.241.1";
-      interface = "eth0";
-      # probably not needed
-      # source = "192.168.241.2";
-    };
   };
 
   systemd = {
@@ -128,6 +108,22 @@
       "modprobe@.service" = {
         enable = false;
         wantedBy = [ ];
+      };
+
+      init-network = {
+        description = "simple script to set up networking for firecracker";
+        after = [ "network-pre.target" ];
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = [
+            # Initialize eth0
+            "${pkgs.iproute2}/bin/ip addr add 192.168.241.2/29 dev eth0"
+            "${pkgs.iproute2}/bin/ip link set eth0 up"
+            "${pkgs.iproute2}/bin/ip route add default via 192.168.241.1"
+          ];
+        };
       };
     };
 

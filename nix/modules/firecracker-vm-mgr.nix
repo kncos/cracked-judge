@@ -38,10 +38,6 @@ in
     # using this for debugging mostly
     environment.systemPackages = [ firecracker-vm-mgr ];
 
-    #systemd.tmpfiles.rules = [
-    #  "d /var/lib/cracked-judge/deps 0755 root root -"
-    #];
-
     systemd.mounts = [
       {
         enable = true;
