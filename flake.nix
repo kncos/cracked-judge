@@ -76,6 +76,8 @@
           nixosSystem = self.nixosConfigurations.firecracker-debug;
         };
 
+        firecracker-vm-mgr = pkgs.callPackage ./nix/pkgs/firecracker-vm-mgr.nix { };
+
         guest = pkgs.callPackage ./nix/pkgs/cj-guest.nix { };
         guest-test = pkgs.callPackage ./nix/pkgs/cj-guest-test.nix { };
 

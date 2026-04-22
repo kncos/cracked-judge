@@ -19,7 +19,6 @@ get_vars() {
 
   VM_JAIL_DIR="${VMROOT}/jail/firecracker/${VM_IDX}"
   VM_RUN_DIR="${VMROOT}/run/${VM_IDX}"
-  BINS_DIR="${VMROOT}/bin"
 
   VM_UID=60000
   VM_GID=60000
@@ -115,12 +114,12 @@ start_vm() {
   teardown_network $1
   setup_network $1
 
-  exec "${BINS_DIR}/jailer" \
+  exec jailer \
     --uid $VM_UID \
     --gid $VM_GID \
     --id $VM_IDX \
     --netns "/var/run/netns/${NS}" \
-    --exec-file "${BINS_DIR}/firecracker" \
+    --exec-file "$(which firecracker)" \
     --chroot-base-dir "${VMROOT}/jail" \
     -- \
     --config-file "deps/vm-config.json"
