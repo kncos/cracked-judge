@@ -19,5 +19,5 @@ pkgs.writeShellApplication {
     firecracker
   ];
 
-  text = builtins.readFile ../../vm-host-scripts/fc-pool.sh;
+  text = builtins.readFile ../../vm-host-scripts/firecracker-vm-mgr.sh;
 }

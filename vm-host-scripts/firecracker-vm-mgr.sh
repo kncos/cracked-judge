@@ -1,8 +1,24 @@
 #!/bin/sh
-set -eux
+set -eu
+
+check_deps() {
+  ret=0
+  deps="ip echo iptables firecracker jailer mount umount rm mkdir chown curl"
+  for cmd in $deps; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      echo "Error: Required command '$cmd' failed dependency check."
+      ret=1
+    fi
+  done
+
+  return "$ret"
+}
 
 # set variables
 get_vars() {
+  # i want to see the commands that get run when we do an actual vm setup/teardown task
+  set -x
+
   VM_IDX="$1"
   NS="fc${VM_IDX}"
   VETH_HOST="veth${VM_IDX}"
@@ -93,7 +109,7 @@ setup_vm_fs() {
   mkdir -p "${VM_RUN_DIR}"
   mount --bind \
     --map-users 0:${VM_UID}:65534 \
-    --map-groups 0:${VM_UID}:65534 \
+    --map-groups 0:${VM_GID}:65534 \
     "${VM_RUN_DIR}" "${VM_JAIL_DIR}/root/run"
 
   # overlay mount 
@@ -140,13 +156,82 @@ stop_vm() {
   teardown_network "$1"
 }
 
+# we allow vm indices from 0 to 255
+is_valid_idx() {
+  BASE_IDX_ERR_MSG="ERROR: Expected numeric value between 0-255"
+  # value empty
+  if [ -z "$1" ]; then 
+    echo "${BASE_IDX_ERR_MSG}: value was empty" >&2
+    return 1
+  fi
+
+  # check if non-alphanum
+  case "$1" in
+    *[!0-9]*) 
+      echo "${BASE_IDX_ERR_MSG}: value was non-numeric" >&2
+      return 1
+    ;;
+  esac
+
+  # check numeric range
+  if [ "$1" -ge 0 ] && [ "$1" -le 255 ]; then
+    return 0
+  else
+    echo "${BASE_IDX_ERR_MSG}: value was not in the range 0-255" >&2
+    return 1
+  fi
+}
+
+# shell name, command, 
+help() {
+  echo "Usage: $1 <command> [vm-idx]"
+  echo ""
+  echo "Commands:"
+  echo "  start <vm-idx>              Start a virtual machine"
+  echo "  stop <vm-idx>               Stop a virtual machine (performs idempotent cleans up if vm isn't running)"
+  echo "  setup-network <vm-idx>      Sets up networking rules for a vm-idx"
+  echo "  teardown-network <vm-idx>   Removes networking rules for a vm-idx"
+  echo "  check-deps                  Quick and dirty dependency check using which"
+  echo "  help                        Display this menu"
+}
+
+if [ -z "${1:-}" ]; then
+  help "$0"
+  echo "Error: No command was provided" >&2
+  exit 1
+fi
+
+if [ "$1" = "help" ]; then
+  help "$0"
+  exit 0;
+fi
+
+if [ "$1" = "check-deps" ]; then
+  if check_deps; then
+    echo "All dependency checks succeeded!"
+    exit 0
+  else
+    echo "Some dependency checks failed" 
+    exit 1
+  fi
+fi
+  
+# handle commands that require <vm-idx> ...
+if ! is_valid_idx "${2:-}" >/dev/null 2>&1; then
+  help "$0"
+  # print error msg after help
+  is_valid_idx "${2:-}"
+  exit 1
+fi
+
 case "$1" in
   start) start_vm "$2" ;;
   stop) stop_vm "$2" ;;
   setup-network) setup_network "$2" ;;
   teardown-network) teardown_network "$2" ;;
   *)
-    echo "Usage: $0 {start|stop|setup-network|teardown-network} <vm-idx>"
+    help "$0"
+    echo "Error: invalid command"
     exit 1
     ;;
 esac
