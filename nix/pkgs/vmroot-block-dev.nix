@@ -1,27 +1,34 @@
-{ pkgs, firecracker-bundle, ... }:
-pkgs.vmTools.runInLinuxVM (
-  pkgs.runCommand "vmroot.img"
-    {
-      nativeBuildinputs = with pkgs; [
-        xfsprogs
-        util-linux
-      ];
+{
+  pkgs,
+  firecracker-bundle,
+  diskSizeMiB ? 16384,
+  ...
+}:
+pkgs.runCommand "vmroot-block-dev"
+  {
+    nativeBuildInputs = with pkgs; [
+      xfsprogs
+      lkl
+      coreutils
+      rsync
+    ];
+    deps = firecracker-bundle;
+  }
+  ''
+    set -eux
 
-      preVM = ''
-        qemu-img create -f raw disk.img 16G
-      '';
-    }
-    ''
-      mkfs.xfs /dev/vda
+    cd "$NIX_BUILD_TOP"
 
-      mkdir -p /mnt/target
-      mount /dev/vda /mnt/target
+    truncate -s ${toString diskSizeMiB}M "$out"
+    mkfs.xfs -L vmroot -f "$out"
 
-      mkdir -p /mnt/target/deps
+    mkdir -p deps
+    rsync --archive --hard-links "$deps/" deps/
 
-      cp -r ${firecracker-bundle}/* -t /mnt/target/deps/
+    find deps/
 
-      umount /mnt/target
-      cp /dev/vda $out
-    ''
-)
+    cptofs -t xfs -i "$out" deps /
+    cptofs -t xfs -i "$out" deps/rootfs.ext4 /deps/rootfs.ext4
+    cptofs -t xfs -i "$out" deps/vmlinux /deps/vmlinux
+    cptofs -t xfs -i "$out" deps/vm-config.json /deps/vm-config.json
+  ''

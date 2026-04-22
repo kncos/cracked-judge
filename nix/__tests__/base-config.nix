@@ -15,4 +15,8 @@
   ];
   boot.consoleLogLevel = lib.mkForce 3;
   virtualisation.diskSize = 16384;
+
+  environment.systemPackages = with pkgs; [
+    iperf3
+  ];
 }

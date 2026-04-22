@@ -13,6 +13,15 @@ in
   options.firecracker-vm-mgr = {
     enable = lib.mkEnableOption "Installs the firecracker-vm-mgr service";
 
+    mount-bundle = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Create bind mount for firecracker dependencies from /nix/store
+        to /var/lib/cracked-judge/deps
+      '';
+    };
+
     num-workers = lib.mkOption {
       type = lib.types.ints.between 0 256;
       default = 0;
@@ -38,7 +47,7 @@ in
     # using this for debugging mostly
     environment.systemPackages = [ firecracker-vm-mgr ];
 
-    systemd.mounts = [
+    systemd.mounts = lib.mkIf cfg.mount-bundle [
       {
         enable = true;
         description = "Bind mount firecracker bundle";
@@ -55,11 +64,15 @@ in
 
     systemd.services."firecracker-vm@" = {
       description = "Firecracker VM %i";
-      after = [
-        "network.target"
-        "var-lib-cracked\\x2djudge-deps.mount"
-      ];
-      requires = [ "var-lib-cracked\\x2djudge-deps.mount" ];
+      after =
+        if cfg.mount-bundle then
+          [
+            "network.target"
+            "var-lib-cracked\\x2djudge-deps.mount"
+          ]
+        else
+          [ "network.target" ];
+      requires = lib.mkIf cfg.mount-bundle [ "var-lib-cracked\\x2djudge-deps.mount" ];
 
       serviceConfig = {
         Type = "simple";

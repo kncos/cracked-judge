@@ -241,3 +241,153 @@
 
 # 2026-04-22 13:32:32.480671
 +exit
+
+# 2026-04-22 14:18:49.168293
++machine.start()
+
+# 2026-04-22 14:18:59.135185
++exit
+
+# 2026-04-22 14:19:19.722762
++machine.start()
+
+# 2026-04-22 14:20:59.765350
++exit
+
+# 2026-04-22 14:21:18.042894
++machine.start()
+
+# 2026-04-22 14:23:02.382616
++exit
+
+# 2026-04-22 14:23:21.072384
++machine.start()
+
+# 2026-04-22 14:25:41.720689
++res=machine.execute("lsblk")
+
+# 2026-04-22 14:25:48.409713
++print(res[1])
+
+# 2026-04-22 14:28:08.967288
++exit
+
+# 2026-04-22 14:29:21.477438
++machine.start()
+
+# 2026-04-22 14:29:55.129542
++exit
+
+# 2026-04-22 14:31:19.736805
++print(machine.qemu_params)
+
+# 2026-04-22 14:32:11.037526
++machine.start()
+
+# 2026-04-22 14:33:17.119747
++print((machine.execute("mount"))[1])
+
+# 2026-04-22 14:33:43.331961
++print((machine.execute("ls -la /dev/disk/by-id/"))[1])
+
+# 2026-04-22 14:34:05.149712
++print((machine.execute("findmnt /var/lib/cracked-judge"))[1])
+
+# 2026-04-22 14:34:18.671803
++print((machine.execute("ls /var/lib/cracked-judge"))[1])
+
+# 2026-04-22 14:34:30.926925
++print((machine.execute("stat -f /var/lib/cracked-judge"))[1])
+
+# 2026-04-22 14:35:56.568798
++exit
+
+# 2026-04-22 14:36:09.162185
++machine.start()
+
+# 2026-04-22 14:36:59.913356
++exit
+
+# 2026-04-22 14:37:17.898986
++machine.start()
+
+# 2026-04-22 14:39:11.292151
++print(machine.succeed("systemctl status 'var-lib-cracked\\x2djudge.mount' || true"))
+
+# 2026-04-22 14:39:35.674367
++print(machine.succeed("journalctl -u 'var-lib-cracked\\x2djudge.mount' || true"))
+
+# 2026-04-22 14:41:18.408929
++exit
+
+# 2026-04-22 14:41:57.147134
++machine.start()
+
+# 2026-04-22 14:44:58.707098
++exit
+
+# 2026-04-22 14:46:03.581875
++machine.start()
+
+# 2026-04-22 14:48:13.720991
++exit
+
+# 2026-04-22 14:48:33.086969
++machine.start()
+
+# 2026-04-22 14:48:58.578752
++exit
+
+# 2026-04-22 14:54:24.673251
++machine.start()
+
+# 2026-04-22 14:54:41.958707
++exit
+
+# 2026-04-22 15:04:01.990961
++machine.start()
+
+# 2026-04-22 15:06:01.233626
++print(machine.succeed("lsblk -f"))
+
+# 2026-04-22 15:06:10.901330
++print(machine.succeed("blkid /dev/vda"))
+
+# 2026-04-22 15:06:23.470517
++print (machine.succeed("findmnt /var/lib/cracked-judge"))
+
+# 2026-04-22 15:06:56.237646
++print ("mount -t xfs /dev/vda /mnt && ls -la /mnt")
+
+# 2026-04-22 15:07:07.751187
++print (machine.succeed("mount -t xfs /dev/vda /mnt && ls -la /mnt"))
+
+# 2026-04-22 15:07:29.217341
++machine.execute("mkdir /mnt")
+
+# 2026-04-22 15:07:56.928854
++print (machine.succeed("(mount -t xfs /dev/vda /mnt && ls -la /mnt) || true"))
+
+# 2026-04-22 15:08:18.467775
++print (machine.succeed("ls -l /var/lib/cracked-judge"))
+
+# 2026-04-22 15:09:10.488310
++exit
+
+# 2026-04-22 15:15:34.967689
++machine.start()
+
+# 2026-04-22 15:19:04.720291
++exit
+
+# 2026-04-22 15:19:25.667311
++machine.start()
+
+# 2026-04-22 15:20:54.129184
++exit
+
+# 2026-04-22 15:22:02.304225
++machine.start()
+
+# 2026-04-22 15:29:17.648621
++exit
