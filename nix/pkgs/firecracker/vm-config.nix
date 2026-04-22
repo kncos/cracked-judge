@@ -25,6 +25,13 @@ pkgs.writeText "vm-config.json" (
         }
       ];
 
+      network-interfaces = [
+        {
+          iface_id = "eth0";
+          host_dev_name = "vmtap0";
+        }
+      ];
+
       machine-config = {
         vcpu_count = vcpus;
         mem_size_mib = memory;
