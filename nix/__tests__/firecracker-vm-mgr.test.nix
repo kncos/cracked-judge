@@ -9,6 +9,7 @@ in
 pkgs.testers.nixosTest {
   name = "firecracker-vm-mgr-tests";
 
+  # vmroot-block-dev.package = vmroot-block-dev;
   nodes = {
     basic_network = {
       imports = [ ./base-vm-host-config.nix ];
@@ -31,12 +32,11 @@ pkgs.testers.nixosTest {
 
   testScript = ''
     import time
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def wait_for_workers(machine, ips, timeout=45):
       """
       Wait for all worker VMs to come online, then test iperf3 traffic
-      in both directions for each. Polls all IPs concurrently.
+      in both directions for each.
       Raises AssertionError if any worker fails to come online or
       if any iperf3 test fails.
       """
@@ -52,17 +52,14 @@ pkgs.testers.nixosTest {
             f"[{machine.name}] timed out after {timeout}s waiting for workers: {sorted(remaining)}"
           )
 
-        def ping(ip):
+        newly_up = set()
+        for ip in remaining:
           status, _ = machine.execute(f"ping {ip} -c 1 -W 1")
-          return ip, status == 0
+          if status == 0:
+            print(f"[{machine.name}] worker {ip} is up (elapsed: {elapsed:.1f}s)")
+            newly_up.add(ip)
 
-        with ThreadPoolExecutor() as executor:
-          futures = {executor.submit(ping, ip): ip for ip in remaining}
-          for future in as_completed(futures):
-            ip, ok = future.result()
-            if ok:
-              print(f"[{machine.name}] worker {ip} is up (elapsed: {time.time() - start_time:.1f}s)")
-              remaining.discard(ip)
+        remaining -= newly_up
 
         if remaining:
           time.sleep(0.5)

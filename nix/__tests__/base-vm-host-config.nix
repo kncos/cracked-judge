@@ -1,4 +1,5 @@
 {
+  lib,
   config,
   ...
 }:
@@ -13,36 +14,44 @@ in
     ../modules/firecracker-vm-mgr.nix
   ];
 
-  # don't want to mount the bundle since we use vmroot-block-dev
-  firecracker-vm-mgr.mount-bundle = false;
+  options = {
+    vmroot-block-dev.package = lib.mkOption {
+      type = lib.types.package;
+    };
+  };
 
-  # speeds up boot
-  networking.useDHCP = false;
-  # need xfs for CoW (speeds up vm-mgr by 10+ secs)
-  boot.supportedFilesystems.xfs = true;
+  config = {
+    # don't want to mount the bundle since we use vmroot-block-dev
+    firecracker-vm-mgr.mount-bundle = false;
 
-  # good for at least ~4 firecracker VMs for testing
-  virtualisation.cores = 4;
-  virtualisation.memorySize = 6144;
+    # speeds up boot
+    networking.useDHCP = false;
+    # need xfs for CoW (speeds up vm-mgr by 10+ secs)
+    boot.supportedFilesystems.xfs = true;
 
-  # block device at /var/lib/cracked-judge, contains deps/ dir
-  virtualisation.qemu.drives = [
-    {
-      name = "vmroot";
-      file = "${vmroot-block-dev}";
-      driveExtraOpts = {
-        format = "raw";
-        snapshot = "on";
-      };
-      deviceExtraOpts = {
-        serial = "vmroot";
-      };
-    }
-  ];
+    # good for at least ~4 firecracker VMs for testing
+    virtualisation.cores = 4;
+    virtualisation.memorySize = 6144;
 
-  virtualisation.fileSystems."/var/lib/cracked-judge" = {
-    device = "/dev/disk/by-id/virtio-vmroot";
-    fsType = "xfs";
-    options = [ "noatime" ];
+    # block device at /var/lib/cracked-judge, contains deps/ dir
+    virtualisation.qemu.drives = [
+      {
+        name = "vmroot";
+        file = "${vmroot-block-dev}";
+        driveExtraOpts = {
+          format = "raw";
+          snapshot = "on";
+        };
+        deviceExtraOpts = {
+          serial = "vmroot";
+        };
+      }
+    ];
+
+    virtualisation.fileSystems."/var/lib/cracked-judge" = {
+      device = "/dev/disk/by-id/virtio-vmroot";
+      fsType = "xfs";
+      options = [ "noatime" ];
+    };
   };
 }
