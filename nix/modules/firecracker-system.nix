@@ -86,8 +86,24 @@
   networking = {
     enableIPv6 = false;
     useDHCP = false;
-    interfaces = { };
     hostName = "judge";
+
+    interfaces.eth0 = {
+      ipv4.addresses = [
+        {
+          # guest side tap ip
+          address = "192.168.241.2";
+          prefixLength = 29;
+        }
+      ];
+    };
+
+    defaultGateway = {
+      address = "192.168.241.1";
+      interface = "eth0";
+      # probably not needed
+      # source = "192.168.241.2";
+    };
   };
 
   systemd = {

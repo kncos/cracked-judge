@@ -3,7 +3,7 @@ set -eu
 
 check_deps() {
   ret=0
-  deps="ip echo iptables firecracker jailer mount umount rm mkdir chown curl"
+  deps="ip echo iptables firecracker jailer mount umount rm mkdir chown chmod curl"
   for cmd in $deps; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       echo "Error: Required command '$cmd' failed dependency check."
@@ -116,6 +116,9 @@ setup_vm_fs() {
   mkdir -p "${VM_JAIL_DIR}/root/"
   cp -r --reflink=auto "${VMROOT}/deps/" -t "${VM_JAIL_DIR}/root/"
   chown -R "${VM_UID}:${VM_GID}" "${VM_JAIL_DIR}/root/deps"
+  # /{vmroot}/deps might be a ro bind mount from /nix/store or something, fix perms:
+  find "${VM_JAIL_DIR}/root/deps" -type d -exec chmod 755 {}
+  find "${VM_JAIL_DIR}/root/deps" -type f -exec chmod 644 {}
 }
 
 
