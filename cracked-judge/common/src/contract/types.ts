@@ -80,9 +80,9 @@ export const zIsolateMeta = z.object({
 
 export const zJob = z.object({
   id: z.string(),
-  files: z.file(),
   isolateOpts: zIsolateRunOpts.optional(),
-  returnPayload: z.boolean().optional().default(false),
+  files: z.file(),
+  dependencyUrls: z.array(z.url()),
 });
 
 export const zJobResult = z.object({
@@ -103,5 +103,6 @@ export const zJobResult = z.object({
     .optional(),
   message: z.string(),
   status: zJudgeStatus,
-  payload: z.file().optional(),
+  // url location
+  payloadUrl: z.url().optional(),
 });
