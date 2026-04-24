@@ -44,20 +44,24 @@ export const handleJob = async (
   const boxPath = path.join(boxRoot, "box");
 
   const results = [];
-  let success = true;
   for (const step of steps) {
     const res = await handleStep(step, boxPath, job.box_id);
     results.push(res);
     if (res.status !== "AC") {
-      success = false;
+      isolate.cleanup(job.box_id);
+      return {
+        id,
+        success: false,
+        stepResults: results,
+      };
     }
   }
 
   isolate.cleanup(job.box_id);
 
   return {
-    stepResults: results,
     id,
-    success,
+    success: true,
+    stepResults: results,
   };
 };

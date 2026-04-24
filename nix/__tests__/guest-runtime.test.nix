@@ -10,6 +10,8 @@ pkgs.testers.nixosTest {
 
     guest-test-runtime.enable = true;
     networking.useDHCP = false;
+    virtualisation.cores = 8;
+    virtualisation.memorySize = 12288;
   };
 
   testScript = ''

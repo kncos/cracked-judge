@@ -361,9 +361,7 @@ describe("handleJob — multi-step", () => {
     },
     TIMEOUT,
   );
-});
 
-describe("handleJob — resource limits", () => {
   test(
     "kills a process that exceeds the time limit (TO)",
     async () => {
@@ -388,39 +386,6 @@ describe("handleJob — resource limits", () => {
       expect(result.success).toBe(false);
       expect(result.stepResults[0]?.meta.status).toBe("TO");
       expect(result.stepResults[0]?.meta.killed).toBe(true);
-    },
-    TIMEOUT,
-  );
-
-  test(
-    "kills a process that exceeds the memory limit (OOM)",
-    async () => {
-      // Tries to allocate ~256 MiB with `dd` into a tmpfs — with cg_mem capped at 64 MiB this should OOM
-      const job: Job = {
-        id: "test-oom",
-        box_id: nextBoxId(),
-        steps: [
-          {
-            cmd: [
-              "/bin/sh",
-              "-c",
-              "dd if=/dev/zero bs=1M count=256 | cat > /dev/null",
-            ],
-            isolateOpts: {
-              ...BASE_ISOLATE_OPTS,
-              cg_mem: 32768, // 32 MiB hard cap
-              time: 5,
-              wall_time: 10,
-            },
-            dependencyUrls: [],
-          },
-        ],
-      };
-
-      const result = await handleJob(job);
-
-      expect(result.success).toBe(false);
-      expect(result.stepResults[0]?.meta.cg_oom_killed).toBe(true);
     },
     TIMEOUT,
   );

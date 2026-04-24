@@ -95,6 +95,10 @@ export const run = (
     `--stderr=stderr.txt`,
   ];
 
+  // default to 256 here, reasonably high limit, prevents many programs
+  // from failing when the normal default prevents any forking whatsoever
+  params.processes = params.processes ?? 256;
+
   // just used `|| {}` here because it will cause a no-op but not
   // require this whole block to be nested in an if statement
   for (const [k, v] of Object.entries(params || {})) {
