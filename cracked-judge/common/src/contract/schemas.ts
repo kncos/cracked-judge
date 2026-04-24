@@ -1,6 +1,9 @@
 import z from "zod";
 import { JUDGE_STATUS_CODES } from "./types";
 
+/** user friendly judge status codes */
+export const zJudgeStatus = z.enum(JUDGE_STATUS_CODES);
+
 /**
  * Options for isolate.
  * - `time`, `wall_time`, and `extra_time` are in sections and accept decimals
@@ -74,12 +77,9 @@ export const zJobStepResult = z.object({
   meta: zIsolateMeta,
   stdout: z.string(),
   stderr: z.string(),
-  upload: z
-    .object({
-      success: z.boolean(),
-      url: z.url(),
-    })
-    .optional(),
+  uploadUrl: z.url().optional(),
+  status: zJudgeStatus,
+  message: z.string(),
 });
 
 export const zJobResult = z.object({
@@ -88,4 +88,3 @@ export const zJobResult = z.object({
   stepResults: z.array(zJobStepResult),
   success: z.boolean(),
 });
-export const zJudgeStatus = z.enum(JUDGE_STATUS_CODES);

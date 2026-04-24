@@ -93,7 +93,7 @@
       };
 
       checks.${system} = {
-        guest-runtime = pkgs.callPackage ./nix/__tests__/guest-runtime.test.nix { };
+        worker = pkgs.callPackage ./nix/__tests__/guest-runtime.test.nix { };
         firecracker-vm-mgr = pkgs.callPackage ./nix/__tests__/firecracker-vm-mgr.test.nix {
           firecracker-bundle = self.packages.${system}.firecracker-debug;
         };

@@ -1,11 +1,10 @@
-import type { IsolateResult } from "@cracked-judge/common/contract";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { cleanup, init, run } from "../isolate/commands";
 
 const testbin = "/run/current-system/sw/bin/isolate-test-program";
 const BOX_ID = 0;
 
-const printres = (input: IsolateResult) => {
+const printres = (input: ReturnType<typeof run>) => {
   console.log(">>> STDOUT:");
   console.log(input.stdout.slice(0, 2048));
   console.log(">>> STDERR:");

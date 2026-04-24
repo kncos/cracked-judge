@@ -1,5 +1,5 @@
 import { CrackedError } from "@cracked-judge/common";
-import { zIsolateRunOpts } from "@cracked-judge/common/contract";
+import { zIsolateMeta, zIsolateRunOpts } from "@cracked-judge/common/contract";
 import { fileExists } from "@cracked-judge/common/file-system";
 import {
   procLogAndMaybeThrow,
@@ -13,7 +13,8 @@ import { interpretMeta, parseMeta } from "./utils";
 
 // this is the default path template and is exactly what isolate init
 // is returning, so we'll make the assumption that this will hold true for now
-const getBoxPath = (boxId: number = 0) => `/var/lib/isolate/boxes/${boxId}`;
+export const getBoxPath = (boxId: number = 0) =>
+  `/var/lib/isolate/boxes/${boxId}`;
 
 /**
  * Helper that runs the isolate --init command
@@ -69,7 +70,11 @@ export const cleanup = (boxid: number = 0) => {
 export const run = (
   execCmd: string[],
   params: z.infer<typeof zIsolateRunOpts>,
-): z.infer<zJobStepResult> => {
+): {
+  stdout: string;
+  stderr: string;
+  meta: z.infer<typeof zIsolateMeta>;
+} & ReturnType<typeof interpretMeta> => {
   // do this here to get the box path, but we won't rely on this.
   // with isolate, it's a no-op if init is run twice
   const boxPath = getBoxPath(params?.box_id);
