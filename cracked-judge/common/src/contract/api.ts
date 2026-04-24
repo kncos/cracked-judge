@@ -1,49 +1,23 @@
 import { oc } from "@orpc/contract";
 import z from "zod";
-import { zJob, zJobResult, zJudgeStatus } from "./types";
+import { zJob, zJobResult } from "./schemas";
+
+const zCheckRes = z.object({ ok: z.boolean() });
 
 export const apiRouterContract = {
   user: {
-    submit: oc
-      .input(
-        z.object({
-          files: z.file(),
-        }),
-      )
-      .output(
-        z.object({
-          id: z.string(),
-          message: z.string(),
-          status: zJudgeStatus,
-          stdout: z.string(),
-          stderr: z.string(),
-        }),
-      ),
-    check: oc.output(
-      z.object({
-        ok: z.boolean(),
-        message: z.string(),
-      }),
-    ),
+    submit: oc.input(zJob).output(z.object(zJobResult)),
+    check: oc.output(zCheckRes),
   },
   admin: {
     submit: oc.input(zJob).output(zJobResult),
+    check: oc.output(zCheckRes),
   },
   worker: {
     request: oc
-      .input(
-        z
-          .object({ timeoutSec: z.number().min(0).optional().default(30) })
-          .optional()
-          .default({ timeoutSec: 30 }),
-      )
+      .input(z.object({ timeout: z.number().nonnegative() }).optional())
       .output(zJob.nullable()),
     submit: oc.input(zJobResult),
-    check: oc.output(
-      z.object({
-        ok: z.boolean(),
-        message: z.string(),
-      }),
-    ),
+    check: oc.output(zCheckRes),
   },
 };

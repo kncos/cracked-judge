@@ -1,9 +1,5 @@
 import { CrackedError } from "@cracked-judge/common";
-import {
-  zIsolateMeta,
-  zIsolateRunOpts,
-  type JudgeStatus,
-} from "@cracked-judge/common/contract";
+import { zIsolateRunOpts } from "@cracked-judge/common/contract";
 import { fileExists } from "@cracked-judge/common/file-system";
 import {
   procLogAndMaybeThrow,
@@ -73,13 +69,7 @@ export const cleanup = (boxid: number = 0) => {
 export const run = (
   execCmd: string[],
   params: z.infer<typeof zIsolateRunOpts>,
-): {
-  stdout: string;
-  stderr: string;
-  meta: z.infer<typeof zIsolateMeta>;
-  status: JudgeStatus;
-  message: string;
-} => {
+): z.infer<zJobStepResult> => {
   // do this here to get the box path, but we won't rely on this.
   // with isolate, it's a no-op if init is run twice
   const boxPath = getBoxPath(params?.box_id);
