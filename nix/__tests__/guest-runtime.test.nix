@@ -9,6 +9,7 @@ pkgs.testers.nixosTest {
     ];
 
     guest-test-runtime.enable = true;
+    networking.useDHCP = false;
   };
 
   testScript = ''

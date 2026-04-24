@@ -13,15 +13,14 @@ import { interpretMeta, parseMeta } from "./utils";
 
 // this is the default path template and is exactly what isolate init
 // is returning, so we'll make the assumption that this will hold true for now
-export const getBoxPath = (boxId: number = 0) =>
-  `/var/lib/isolate/boxes/${boxId}`;
+export const getBoxPath = (boxId: number) => `/var/lib/isolate/boxes/${boxId}`;
 
 /**
  * Helper that runs the isolate --init command
- * @param boxid -- optional boxid to initialize, defaults to 0
+ * @param boxid -- boxId to initialize
  * @returns boxpath -- absolute path to the sandbox root directory
  */
-export const init = (boxId: number = 0): string => {
+export const init = (boxId: number): string => {
   const cmd = ["isolate", "--cg", "--init", `--box-id=${boxId}`];
   const proc = Bun.spawnSync(cmd);
   procLogAndMaybeThrow(
@@ -49,7 +48,7 @@ export const init = (boxId: number = 0): string => {
  * Helper that runs the isolate --cleanup command
  * @param boxid -- optional boxid to clean up, defaults to 0
  */
-export const cleanup = (boxid: number = 0) => {
+export const cleanup = (boxid: number) => {
   const cmd = ["isolate", "--cg", "--cleanup", `--box-id=${boxid}`];
   const proc = Bun.spawnSync(cmd);
   procLogAndMaybeThrow(
@@ -77,7 +76,7 @@ export const run = (
 } & ReturnType<typeof interpretMeta> => {
   // do this here to get the box path, but we won't rely on this.
   // with isolate, it's a no-op if init is run twice
-  const boxPath = getBoxPath(params?.box_id);
+  const boxPath = getBoxPath(params.box_id);
   const metaPath = path.join(boxPath, "box", "metadata.out");
   const stdoutPath = path.join(boxPath, "box", "stdout.txt");
   const stderrPath = path.join(boxPath, "box", "stderr.txt");
@@ -146,9 +145,13 @@ export const run = (
       !fileExists(stderrPath) ||
       !fileExists(metaPath)
     ) {
-      throw new CrackedError("ISOLATE_RUN", {
-        message: `Missing one of the files: stdout.txt, stderr.txt, metadata.out`,
-      });
+      const message =
+        "Missing one or more output files:\n" +
+        `  stdout: ${stdoutPath} - exixts: ${fileExists(stdoutPath)}\n` +
+        `  stderr: ${stderrPath} - exixts: ${fileExists(stderrPath)}\n` +
+        `  meta: ${metaPath} - exixts: ${fileExists(metaPath)}\n`;
+
+      throw new CrackedError("ISOLATE_RUN", { message });
     }
 
     const stdout = readFileSync(stdoutPath).toString("utf-8");

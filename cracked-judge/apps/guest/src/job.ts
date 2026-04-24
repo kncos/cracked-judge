@@ -13,6 +13,7 @@ import { interpretMeta } from "./isolate/utils";
 const handleStep = async (
   step: z.infer<typeof zJobStep>,
   boxPath: string,
+  boxId: number,
 ): Promise<z.infer<typeof zJobStepResult>> => {
   if (step.files) {
     await $`tar -xf - -C ${boxPath} < ${step.files}`;
@@ -23,7 +24,7 @@ const handleStep = async (
     }),
   );
 
-  const res = isolate.run(step.cmd, step.isolateOpts);
+  const res = isolate.run(step.cmd, { ...step.isolateOpts, box_id: boxId });
   if (step.uploadUrl) {
     await $`tar -cf - ${boxPath} | curl -X PUT --upload-file - "${step.uploadUrl}"`;
   }
@@ -39,20 +40,20 @@ export const handleJob = async (
   job: z.infer<typeof zJob>,
 ): Promise<z.infer<typeof zJobResult>> => {
   const { id, steps } = job;
-  const boxRoot = isolate.init();
+  const boxRoot = isolate.init(job.box_id);
   const boxPath = path.join(boxRoot, "box");
 
   const results = [];
   let success = true;
   for (const step of steps) {
-    const res = await handleStep(step, boxPath);
+    const res = await handleStep(step, boxPath, job.box_id);
     results.push(res);
     if (res.status !== "AC") {
       success = false;
     }
   }
 
-  isolate.cleanup();
+  isolate.cleanup(job.box_id);
 
   return {
     stepResults: results,

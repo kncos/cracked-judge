@@ -32,7 +32,7 @@ export const zIsolateRunOpts = z.object({
     })
     .optional(),
   processes: z.int().or(z.literal(true)).optional(),
-  box_id: z.int().optional().default(0),
+  box_id: z.int(),
 });
 
 export const zIsolateMeta = z.object({
@@ -62,7 +62,7 @@ export const zIsolateMeta = z.object({
 
 export const zJobStep = z.object({
   cmd: z.array(z.string()),
-  isolateOpts: zIsolateRunOpts,
+  isolateOpts: zIsolateRunOpts.omit({ box_id: true }),
   dependencyUrls: z.array(z.url()),
   files: z.file().optional(),
   uploadUrl: z.url().optional(),
@@ -70,6 +70,7 @@ export const zJobStep = z.object({
 
 export const zJob = z.object({
   id: z.string(),
+  box_id: z.int().optional().default(0),
   steps: z.array(zJobStep).nonempty(),
 });
 
