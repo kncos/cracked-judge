@@ -91,7 +91,7 @@
 
         isolate-test-program = pkgs.pkgsStatic.callPackage ./nix/pkgs/isolate-test-program.nix { };
 
-        s3-hybrid-cache = pkgs.callPackage ./nix/pkgs/s3-hybrid-cache.nix;
+        s3-hybrid-cache = pkgs.callPackage ./nix/pkgs/s3-hybrid-cache.nix { };
       };
 
       checks.${system} = {
