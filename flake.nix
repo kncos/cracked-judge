@@ -99,6 +99,7 @@
         firecracker-vm-mgr = pkgs.callPackage ./nix/__tests__/firecracker-vm-mgr.test.nix {
           firecracker-bundle = self.packages.${system}.firecracker-debug;
         };
+        s3-hybrid-cache = pkgs.callPackage ./nix/__tests__/s3-hybrid-cache.test.nix { };
       };
     };
 }

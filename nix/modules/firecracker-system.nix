@@ -1,6 +1,14 @@
 { pkgs, lib, ... }:
 
 {
+  imports = [ ./s3-hybrid-cache.nix ];
+
+  services = {
+    s3-hybrid-cache = {
+      enable = true;
+    };
+  };
+
   boot = {
     # loader.grub.enable = false;
     kernel = {
