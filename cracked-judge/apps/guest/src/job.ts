@@ -19,8 +19,14 @@ const handleStep = async (
     await $`tar -xf - -C ${boxPath} < ${step.files}`;
   }
   await Promise.all(
-    step.dependencyUrls.map(async (url) => {
-      await $`curl -sSL ${url} | tar -xf - -C ${boxPath}`;
+    step.dependencyUrls.map(async (inputUrl) => {
+      const url = inputUrl.trim();
+      try {
+        await $`curl -sSL "${url}" | tar -xf - -C ${boxPath}`;
+      } catch (e) {
+        console.error(`URL FAILED: ${url}`);
+        throw e;
+      }
     }),
   );
 

@@ -1,5 +1,6 @@
 // handleJob.test.ts
 import type { zJob, zJobResult } from "@cracked-judge/common/contract";
+import { $ } from "bun";
 import { describe, expect, test } from "bun:test";
 import { createTar } from "nanotar";
 import type { z } from "zod";
@@ -343,6 +344,90 @@ describe("handleJob — multi-step", () => {
             isolateOpts: { ...BASE_ISOLATE_OPTS },
             dependencyUrls: [],
             files: tarToFile(compileSrc),
+          },
+          {
+            // run step — no new files, binary already in box
+            cmd: ["/box/main"],
+            isolateOpts: { ...BASE_ISOLATE_OPTS },
+            dependencyUrls: [],
+          },
+        ],
+      };
+
+      const result = await handleJob(job);
+
+      expect(result.success).toBe(true);
+      expect(result.stepResults).toHaveLength(2);
+      expect(result.stepResults[1]?.stdout.trim()).toBe("compiled_output");
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "kills a process that exceeds the time limit (TO)",
+    async () => {
+      const job: Job = {
+        id: "test-timeout",
+        box_id: nextBoxId(),
+        steps: [
+          {
+            cmd: ["/bin/sh", "-c", "while true; do :; done"],
+            isolateOpts: {
+              ...BASE_ISOLATE_OPTS,
+              time: 1,
+              wall_time: 2,
+            },
+            dependencyUrls: [],
+          },
+        ],
+      };
+
+      const result = await handleJob(job);
+
+      expect(result.success).toBe(false);
+      expect(result.stepResults[0]?.meta.status).toBe("TO");
+      expect(result.stepResults[0]?.meta.killed).toBe(true);
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "compile-then-run pattern: but w/ s3",
+    async () => {
+      // step 1: compile a trivial C program
+      // step 2: run the compiled binary
+      // Both steps share the same box_id so the filesystem is shared
+
+      const compileSrc = createTar([
+        {
+          name: "main.c",
+          data: `#include <stdio.h>\nint main(){printf("compiled_output\\n");return 0;}`,
+        },
+        {
+          name: "compile.sh",
+          data: "gcc /box/main.c -o /box/main",
+        },
+      ]);
+      const tarball = tarToFile(compileSrc);
+      const base_s3_url = "http://localhost:9000";
+      // create a bucket
+      await $`aws --endpoint-url ${base_s3_url} --no-verify-ssl s3 mb s3://test`;
+      // move tarball to s3 bucket
+      await $`aws --endpoint-url ${base_s3_url} s3 cp - s3://test/example.tar < ${tarball}`;
+      // presign url that can be used w/ curl
+      const signRes =
+        await $`aws --endpoint-url ${base_s3_url} s3 presign s3://test/example.tar --expires-in 3600`;
+
+      const dependencyUrl = signRes.stdout.toString();
+      const job: Job = {
+        id: "test-compile-run",
+        box_id: nextBoxId(),
+        steps: [
+          {
+            // compile step
+            cmd: ["/bin/sh", "/box/compile.sh"],
+            isolateOpts: { ...BASE_ISOLATE_OPTS },
+            dependencyUrls: [dependencyUrl],
           },
           {
             // run step — no new files, binary already in box

@@ -1,4 +1,4 @@
-import { apiRouterContract } from "@cracked-judge/common/contract";
+import { apiRouterContract, zJob } from "@cracked-judge/common/contract";
 import { procLogHelper } from "@cracked-judge/common/proc";
 import { implement, onError, ORPCError } from "@orpc/server";
 import { RPCHandler } from "@orpc/server/bun-ws";
@@ -62,8 +62,8 @@ const serverMock = {
       return { ok: true, message: "check success." };
     }),
     request: oc.worker.request.handler(({ context, input }) => {
-      const { timeoutSec } = input;
-      if (timeoutSec === 42) {
+      const { timeout = 30 } = input || {};
+      if (timeout === 42) {
         return null;
       }
 
@@ -77,16 +77,18 @@ const serverMock = {
 
       return {
         id: crypto.randomUUID(),
-        files,
-        returnPayload: false,
-      };
+        box_id: 0,
+        steps: [
+          {
+            cmd: ["./run.sh"],
+            isolateOpts: {},
+            dependencyUrls: [],
+          },
+        ],
+      } satisfies z.infer<typeof zJob>;
     }),
     submit: oc.worker.submit.handler(({ input }) => {
-      const { payload, ...rest } = input;
-      serverLogger.info(rest, "Got submission");
-      if (payload) {
-        serverLogger.info(`PAYLOAD SIZE: ${payload.size / 1024} KiB`);
-      }
+      serverLogger.info(input, "got input...");
     }),
   }),
 };
