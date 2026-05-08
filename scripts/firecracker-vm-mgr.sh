@@ -6,7 +6,7 @@ check_deps() {
   deps="ip echo iptables firecracker jailer mount umount rm mkdir chown chmod curl"
   for cmd in $deps; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-      echo "Error: Required command '$cmd' failed dependency check."
+      echo "Error: Required command '$cmd' failed dependency check." >&2
       ret=1
     fi
   done

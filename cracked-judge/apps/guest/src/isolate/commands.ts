@@ -1,9 +1,5 @@
 import { CrackedError } from "@cracked-judge/common";
-import {
-  zIsolateMeta,
-  zIsolateRunOpts,
-  type JudgeStatus,
-} from "@cracked-judge/common/contract";
+import { zIsolateMeta, zIsolateRunOpts } from "@cracked-judge/common/contract";
 import { fileExists } from "@cracked-judge/common/file-system";
 import {
   procLogAndMaybeThrow,
@@ -17,14 +13,14 @@ import { interpretMeta, parseMeta } from "./utils";
 
 // this is the default path template and is exactly what isolate init
 // is returning, so we'll make the assumption that this will hold true for now
-const getBoxPath = (boxId: number = 0) => `/var/lib/isolate/boxes/${boxId}`;
+export const getBoxPath = (boxId: number) => `/var/lib/isolate/boxes/${boxId}`;
 
 /**
  * Helper that runs the isolate --init command
- * @param boxid -- optional boxid to initialize, defaults to 0
+ * @param boxid -- boxId to initialize
  * @returns boxpath -- absolute path to the sandbox root directory
  */
-export const init = (boxId: number = 0): string => {
+export const init = (boxId: number): string => {
   const cmd = ["isolate", "--cg", "--init", `--box-id=${boxId}`];
   const proc = Bun.spawnSync(cmd);
   procLogAndMaybeThrow(
@@ -52,7 +48,7 @@ export const init = (boxId: number = 0): string => {
  * Helper that runs the isolate --cleanup command
  * @param boxid -- optional boxid to clean up, defaults to 0
  */
-export const cleanup = (boxid: number = 0) => {
+export const cleanup = (boxid: number) => {
   const cmd = ["isolate", "--cg", "--cleanup", `--box-id=${boxid}`];
   const proc = Bun.spawnSync(cmd);
   procLogAndMaybeThrow(
@@ -77,12 +73,10 @@ export const run = (
   stdout: string;
   stderr: string;
   meta: z.infer<typeof zIsolateMeta>;
-  status: JudgeStatus;
-  message: string;
-} => {
+} & ReturnType<typeof interpretMeta> => {
   // do this here to get the box path, but we won't rely on this.
   // with isolate, it's a no-op if init is run twice
-  const boxPath = getBoxPath(params?.box_id);
+  const boxPath = getBoxPath(params.box_id);
   const metaPath = path.join(boxPath, "box", "metadata.out");
   const stdoutPath = path.join(boxPath, "box", "stdout.txt");
   const stderrPath = path.join(boxPath, "box", "stderr.txt");
@@ -100,6 +94,10 @@ export const run = (
     `--stdout=stdout.txt`,
     `--stderr=stderr.txt`,
   ];
+
+  // default to 256 here, reasonably high limit, prevents many programs
+  // from failing when the normal default prevents any forking whatsoever
+  params.processes = params.processes ?? 256;
 
   // just used `|| {}` here because it will cause a no-op but not
   // require this whole block to be nested in an if statement
@@ -151,9 +149,13 @@ export const run = (
       !fileExists(stderrPath) ||
       !fileExists(metaPath)
     ) {
-      throw new CrackedError("ISOLATE_RUN", {
-        message: `Missing one of the files: stdout.txt, stderr.txt, metadata.out`,
-      });
+      const message =
+        "Missing one or more output files:\n" +
+        `  stdout: ${stdoutPath} - exixts: ${fileExists(stdoutPath)}\n` +
+        `  stderr: ${stderrPath} - exixts: ${fileExists(stderrPath)}\n` +
+        `  meta: ${metaPath} - exixts: ${fileExists(metaPath)}\n`;
+
+      throw new CrackedError("ISOLATE_RUN", { message });
     }
 
     const stdout = readFileSync(stdoutPath).toString("utf-8");

@@ -1,100 +1,73 @@
 import type {
-  IsolateResult,
-  zIsolateRunOpts,
   zJob,
+  zJobResult,
+  zJobStep,
+  zJobStepResult,
 } from "@cracked-judge/common/contract";
-import { fileExists } from "@cracked-judge/common/file-system";
-import { procLogHelper } from "@cracked-judge/common/proc";
-import * as Bun from "bun";
+import { $ } from "bun";
 import path from "node:path";
-import type z from "../node_modules/zod/v4/classic/external.d.cts";
+import type z from "zod";
 import { isolate } from "./isolate/commands";
-import { guestLogger } from "./utils";
+import { interpretMeta } from "./isolate/utils";
 
-//! What happens to stdout.txt and stderr.txt if we do subsequent runs?
-//! case 1: overwritten -- fine
-//! case 2: appended -- not fine, needs handled
-
-export type PrepareResult =
-  | { success: false; message: string }
-  | { success: true; boxPath: string };
-
-export const prepareJob = async (
-  job: z.infer<typeof zJob>,
-): Promise<PrepareResult> => {
-  const boxPath = isolate.init();
-  const filesPath = path.join(boxPath, "box", "files.zip");
-  const totalBytes = await Bun.write(filesPath, job.files);
-  guestLogger.debug(`Wrote ${totalBytes / 1024} KiB to ${filesPath}`);
-  // unzip flat
-  const cmd = ["unzip", "-o", filesPath, "-d", path.dirname(filesPath)];
-  const proc = Bun.spawnSync(cmd);
-  procLogHelper(
-    proc,
-    cmd,
-    guestLogger.child({}, { msgPrefix: "unzip proc: " }),
-  );
-  if (proc.exitCode !== 0) {
-    const message = "unzip returned non-zero, cleaning up and continuing...";
-    guestLogger.debug(message);
-    isolate.cleanup();
-    return { success: false, message };
-  }
-  return { success: true, boxPath };
-};
-
-export type IsolateRunResult =
-  | { status: "skipped"; res?: undefined }
-  | { status: "success" | "failed"; res: IsolateResult };
-
-export const runBoxScript = (
-  realScriptPath: string,
-  opts: z.infer<typeof zIsolateRunOpts> = {},
-): IsolateRunResult => {
-  const scriptName = path.basename(realScriptPath);
-  const res = fileExists(realScriptPath)
-    ? isolate.run(["/bin/sh", scriptName], { ...opts })
-    : undefined;
-
-  if (!res) {
-    return { status: "skipped" };
-  } else if (res.status !== "AC") {
-    return { status: "failed", res };
-  } else {
-    return { status: "success", res };
-  }
-};
-
-export type ZipSandboxResult =
-  | { status: "success"; payload: File }
-  | { status: "failed"; message: string; payload?: undefined }
-  | { status: "skipped"; payload?: undefined };
-export const zipSandbox = (
+const handleStep = async (
+  step: z.infer<typeof zJobStep>,
   boxPath: string,
-  getPayload: boolean,
-): ZipSandboxResult => {
-  if (!getPayload) {
-    return { status: "skipped" };
+  boxId: number,
+): Promise<z.infer<typeof zJobStepResult>> => {
+  if (step.files) {
+    await $`tar -xf - -C ${boxPath} < ${step.files}`;
   }
+  await Promise.all(
+    step.dependencyUrls.map(async (inputUrl) => {
+      const url = inputUrl.trim();
+      try {
+        await $`curl -sSL "${url}" | tar -xf - -C ${boxPath}`;
+      } catch (e) {
+        console.error(`URL FAILED: ${url}`);
+        throw e;
+      }
+    }),
+  );
 
-  const payloadDir = path.join(boxPath, "box");
-  const zipFileName = "payload.zip";
-  const cmd = ["zip", zipFileName, "-r", "*", "-x", '"*.zip"'];
-  const proc = Bun.spawnSync(cmd, { cwd: payloadDir });
-  if (proc.exitCode !== 0) {
-    procLogHelper(proc, cmd, guestLogger);
-    return {
-      status: "failed",
-      message:
-        `zip process exited with code ${proc.exitCode}.\n` +
-        `STDOUT: ${proc.stdout.toString("utf-8")}\n` +
-        `STDERR: ${proc.stderr.toString("utf-8")}`,
-    };
+  const res = isolate.run(step.cmd, { ...step.isolateOpts, box_id: boxId });
+  if (step.uploadUrl) {
+    await $`tar -cf - ${boxPath} | curl -X PUT --upload-file - "${step.uploadUrl}"`;
   }
-
-  const bunFile = Bun.file(path.join(payloadDir, zipFileName));
   return {
-    status: "success",
-    payload: new File([bunFile], zipFileName),
+    ...res,
+    // rethinking if false should ever be an option
+    uploadUrl: step.uploadUrl,
+    ...interpretMeta(res.meta),
+  };
+};
+
+export const handleJob = async (
+  job: z.infer<typeof zJob>,
+): Promise<z.infer<typeof zJobResult>> => {
+  const { id, steps } = job;
+  const boxRoot = isolate.init(job.box_id);
+  const boxPath = path.join(boxRoot, "box");
+
+  const results = [];
+  for (const step of steps) {
+    const res = await handleStep(step, boxPath, job.box_id);
+    results.push(res);
+    if (res.status !== "AC") {
+      isolate.cleanup(job.box_id);
+      return {
+        id,
+        success: false,
+        stepResults: results,
+      };
+    }
+  }
+
+  isolate.cleanup(job.box_id);
+
+  return {
+    id,
+    success: true,
+    stepResults: results,
   };
 };

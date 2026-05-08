@@ -90,13 +90,16 @@
         guest-test = pkgs.callPackage ./nix/pkgs/cj-guest-test.nix { };
 
         isolate-test-program = pkgs.pkgsStatic.callPackage ./nix/pkgs/isolate-test-program.nix { };
+
+        s3-hybrid-cache = pkgs.callPackage ./nix/pkgs/s3-hybrid-cache.nix { };
       };
 
       checks.${system} = {
-        guest-runtime = pkgs.callPackage ./nix/__tests__/guest-runtime.test.nix { };
+        worker = pkgs.callPackage ./nix/__tests__/guest-runtime.test.nix { };
         firecracker-vm-mgr = pkgs.callPackage ./nix/__tests__/firecracker-vm-mgr.test.nix {
           firecracker-bundle = self.packages.${system}.firecracker-debug;
         };
+        s3-hybrid-cache = pkgs.callPackage ./nix/__tests__/s3-hybrid-cache.test.nix { };
       };
     };
 }

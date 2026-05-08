@@ -1,74 +1,106 @@
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { describe, expect, it } from "bun:test";
 import type z from "zod";
-import {
-  deserializeJob,
-  deserializeJobResult,
-  serializeJob,
-  serializeJobResult,
-} from "../serializers";
-import { zJob, zJobResult } from "../types";
+import type { zJob } from "../schemas";
+import { deserializeJob, serializeJob } from "../serializers";
 
 const someFileContent =
   "the quick brown fox jumps over the lazy dog.\n" +
   "🚀 Sparkle: ✨ | UTF-8: ⚡ | Kanji: 漢字 | Arabic: السلام | Math: π ≈ 3.14 | Hidden: ZWJJoiner";
 
+type Job = z.infer<typeof zJob>;
+
+const baseStep: Job["steps"][0] = {
+  cmd: ["echo", "hello"],
+  isolateOpts: {
+    time: 1.5,
+    cg_mem: 65536,
+    wall_time: 2.0,
+    box_id: 0,
+  },
+  dependencyUrls: ["https://example.com/dep.tar.gz"],
+};
+
 describe("contract serializer tests", () => {
-  it("zJob: serialize & deserialize", async () => {
-    const files = new File([Buffer.from(someFileContent)], "files");
-    const job = zJob.parse({
-      id: "n/a",
-      files,
-      isolateOpts: {
-        cmd: ["/bin/sh", "-c", '"sleep 1"'],
-      },
-      returnPayload: true,
-    } satisfies z.input<typeof zJob>);
+  it("zJob: serialize & deserialize (no files)", async () => {
+    const job: Job = {
+      id: "job-no-files",
+      steps: [baseStep],
+    };
+
     const serialized = await serializeJob(job);
     const deserialized = deserializeJob(serialized);
 
-    const prevHash = await crypto.subtle.digest(
-      "SHA-256",
-      await files.arrayBuffer(),
-    );
+    expect(deserialized.id).toBe(job.id);
+    expect(deserialized.steps).toHaveLength(1);
 
-    const finalHash = await crypto.subtle.digest(
-      "SHA-256",
-      await deserialized.files.arrayBuffer(),
-    );
-
-    expect(prevHash).toEqual(finalHash);
-    const { files: _prevFile, ...prevProps } = job;
-    const { files: _finalFile, ...finalProps } = deserialized;
-    expect(prevProps).toEqual(finalProps);
+    const step = deserialized.steps[0];
+    expect(step?.cmd).toEqual(baseStep.cmd);
+    expect(step?.isolateOpts).toEqual(baseStep.isolateOpts);
+    expect(step?.dependencyUrls).toEqual(baseStep.dependencyUrls);
+    expect(step?.files).toBeUndefined();
   });
 
-  it("zJobResult: serialize & deserialize", async () => {
-    const payload = new File([Buffer.from(someFileContent)], "files");
-    const jobResult = zJobResult.parse({
-      id: "n/a",
-      message: "zJobResult: serialize & deserialize test",
-      status: "AC",
-      payload,
-    } satisfies z.input<typeof zJobResult>);
-    const serialized = await serializeJobResult(jobResult);
-    const deserialized = deserializeJobResult(serialized);
+  it("zJob: serialize & deserialize (with files)", async () => {
+    const files = new File([Buffer.from(someFileContent)], "files");
+    const job: Job = {
+      id: "job-with-files",
+      steps: [{ ...baseStep, files }],
+    };
 
-    const prevHash = await crypto.subtle.digest(
-      "SHA-256",
-      await payload.arrayBuffer(),
+    const serialized = await serializeJob(job);
+    const deserialized = deserializeJob(serialized);
+
+    expect(deserialized.id).toBe(job.id);
+
+    const step = deserialized.steps[0];
+    expect(step?.files).toBeInstanceOf(File);
+    // deserializeJob hardcodes the reconstructed filename
+    expect(step?.files?.name).toBe("files.tar");
+
+    const roundTrippedContent = await step?.files?.text();
+    expect(roundTrippedContent).toBe(someFileContent);
+  });
+
+  it("zJob: serialize & deserialize (multiple steps, mixed files)", async () => {
+    const files = new File([Buffer.from(someFileContent)], "files");
+    const job: Job = {
+      id: "job-multi-step",
+      steps: [
+        { ...baseStep, files },
+        {
+          cmd: ["python3", "solution.py"],
+          isolateOpts: { time: 2.0, cg_mem: 131072, box_id: 1 },
+          dependencyUrls: [],
+          uploadUrl: "https://example.com/upload",
+          // no files on this step
+        },
+      ],
+    };
+
+    const serialized = await serializeJob(job);
+    const deserialized = deserializeJob(serialized);
+
+    expect(deserialized.id).toBe("job-multi-step");
+    expect(deserialized.steps).toHaveLength(2);
+
+    expect(deserialized?.steps[0]?.files).toBeInstanceOf(File);
+    expect(deserialized?.steps[1]?.files).toBeUndefined();
+    expect(deserialized?.steps[1]?.uploadUrl).toBe(
+      "https://example.com/upload",
     );
+  });
 
-    expect(deserialized.payload).toBeDefined();
+  it("zJob: serialized output is a Buffer/Uint8Array", async () => {
+    const job: Job = {
+      id: "job-buffer-check",
+      steps: [baseStep],
+    };
 
-    const finalHash = await crypto.subtle.digest(
-      "SHA-256",
-      await deserialized.payload!.arrayBuffer(),
-    );
+    const serialized = await serializeJob(job);
+    expect(serialized).toBeInstanceOf(Buffer);
+  });
 
-    expect(prevHash).toEqual(finalHash);
-    const { payload: _prevPayload, ...prevProps } = jobResult;
-    const { payload: _finalPayload, ...finalProps } = deserialized;
-    expect(prevProps).toEqual(finalProps);
+  it("zJob: deserialize throws on garbage input", () => {
+    expect(() => deserializeJob(Buffer.from("not msgpack data"))).toThrow();
   });
 });
