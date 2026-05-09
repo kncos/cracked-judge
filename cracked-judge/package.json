@@ -29,6 +29,7 @@
     "@orpc/client": "^1.13.6",
     "@orpc/contract": "^1.13.14",
     "@orpc/server": "^1.13.6",
+    "drizzle-orm": "^0.45.2",
     "generic-pool": "^3.9.0",
     "ioredis": "^5.10.0",
     "msgpackr": "^1.11.9",

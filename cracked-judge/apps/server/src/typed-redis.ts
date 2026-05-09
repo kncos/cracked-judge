@@ -1,9 +1,7 @@
 import { CrackedError } from "@cracked-judge/common";
 import {
   deserializeJob,
-  deserializeJobResult,
   serializeJob,
-  serializeJobResult,
   zJob,
   zJobResult,
 } from "@cracked-judge/common/contract";
@@ -14,7 +12,7 @@ import z, { ZodError } from "zod/v4";
 import { redisLogger } from "./lib/logger";
 
 export const JOB_QUEUE = "jobs" as const;
-export const RESULT_QUEUE = "results" as const;
+export const RESULT_STREAM = "results" as const;
 
 declare module "ioredis" {
   export interface ReplyError extends Error {
@@ -59,7 +57,7 @@ const handleRedisError = (
   throw new CrackedError("REDIS_ERROR", { cause });
 };
 
-const keys = {
+const keyPrefixer = {
   job: (id: string) => `job:${id}` as const,
   result: (id: string) => `result:${id}` as const,
 };
@@ -71,6 +69,8 @@ export class RedisManager {
     const pool = await createRedisPool();
     return new RedisManager(pool);
   };
+
+  sink = async () => {};
 
   destroy = async () => {
     redisLogger.debug("Draining redis pool...");
@@ -84,7 +84,7 @@ export class RedisManager {
     const redis = await this.redisPool.acquire();
     const logger = redisLogger.child({}, { msgPrefix: "enqueueJob: " });
     try {
-      const key = keys.job(input.id);
+      const key = keyPrefixer.job(input.id);
       logger.debug("Serializing Job...");
       const serialized = await serializeJob(input);
       logger.debug(`Setting job key: ${key}`);
@@ -112,7 +112,7 @@ export class RedisManager {
       }
       const [_, id] = popped;
       logger.debug(`got id ${id}`);
-      const key = keys.job(id);
+      const key = keyPrefixer.job(id);
       logger.debug(`getting buffer for key: ${key}`);
       const serialized = await redis.getBuffer(key);
       if (serialized === null) {
@@ -137,13 +137,13 @@ export class RedisManager {
     const redis = await this.redisPool.acquire();
     const logger = redisLogger.child({}, { msgPrefix: "enqueueJobResult: " });
     try {
-      const key = keys.result(input.id);
+      const key = keyPrefixer.result(input.id);
       logger.debug(`Serializing result for key ${key}...`);
-      const serialized = await serializeJobResult(input);
+      const serialized = JSON.stringify(input);
       logger.debug(`Setting ${key} in redis`);
       await redis.set(key, serialized);
-      logger.debug(`Adding ${input.id} on queue ${RESULT_QUEUE}`);
-      await redis.lpush(RESULT_QUEUE, input.id);
+      logger.debug(`Adding ${input.id} on queue ${RESULT_STREAM}`);
+      await redis.lpush(RESULT_STREAM, input.id);
       logger.debug("finished");
     } catch (e) {
       return handleRedisError("enqueueJobResult", e);
@@ -157,7 +157,7 @@ export class RedisManager {
     const logger = redisLogger.child({}, { msgPrefix: "dequeueJobResult: " });
     try {
       logger.debug("popping job result...");
-      const popped = await redis.brpop(RESULT_QUEUE, timeoutSec);
+      const popped = await redis.brpop(RESULT_STREAM, timeoutSec);
       // null if it timed out
       if (popped === null) {
         logger.debug("popping popped null job result");
@@ -165,7 +165,7 @@ export class RedisManager {
       }
       const [_, id] = popped;
       logger.debug(`Popped job ${id}`);
-      const key = keys.result(id);
+      const key = keyPrefixer.result(id);
       logger.debug(`Getting buffer for key ${key}`);
       const serialized = await redis.getBuffer(key);
       if (serialized === null) {
@@ -174,7 +174,7 @@ export class RedisManager {
         });
       }
       logger.debug(`deserializing...`);
-      const deserialized = deserializeJobResult(serialized);
+      const deserialized = JSON.parse(serialized.toString()) as unknown;
       logger.debug(`removing key ${key}`);
       await redis.del(key);
       logger.debug("finished");
