@@ -487,6 +487,10 @@
     url = "https://registry.npmjs.org/msgpackr/-/msgpackr-1.11.9.tgz";
     hash = "sha512-FkoAAyyA6HM8wL882EcEyFZ9s7hVADSwG9xrVx3dxxNQAtgADTrJoEWivID82Iv1zWDsv/OtbrrcZAzGzOMdNw==";
   };
+  "nanoid@5.1.11" = fetchurl {
+    url = "https://registry.npmjs.org/nanoid/-/nanoid-5.1.11.tgz";
+    hash = "sha512-v+KEsUv2ps74PaSKv0gHTxTCgMXOIfBEbaqa6w6ISIGC7ZsvHN4N9oJ8d4cmf0n5oTzQz2SLmThbQWhjd/8eKg==";
+  };
   "nanotar@0.3.0" = fetchurl {
     url = "https://registry.npmjs.org/nanotar/-/nanotar-0.3.0.tgz";
     hash = "sha512-Kv2JYYiCzt16Kt5QwAc9BFG89xfPNBx+oQL4GQXD9nLqPkZBiNaqaCWtwnbk/q7UVsTYevvM1b0UF8zmEI4pCg==";

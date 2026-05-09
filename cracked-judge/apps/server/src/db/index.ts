@@ -1,3 +1,6 @@
 import { drizzle } from "drizzle-orm/bun-sql";
 
-const db = drizzle(process.env.DATABASE_URL ?? "");
+export const db = drizzle(
+  process.env.DATABASE_URL ??
+    "postgresql://admin:password@localhost:5432/crackedjudge",
+);
