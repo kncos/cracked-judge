@@ -1,8 +1,16 @@
+import { JUDGE_STATUS_CODES } from "@cracked-judge/common/contract";
 import { relations } from "drizzle-orm";
-import { pgSchema, text, timestamp } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  json,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { nanoid } from "nanoid";
 
-export const schema = pgSchema("crackedjudge");
+// export const schema = pgSchema("crackedjudge");
 
 const tableBase = {
   id: text()
@@ -12,13 +20,22 @@ const tableBase = {
   updated_at: timestamp(),
 } as const;
 
-export const jobStepResults = schema.table("job_step_results", {
+export const judge_status = pgEnum("judge_status", JUDGE_STATUS_CODES);
+
+export const jobStepResults = pgTable("job_step_results", {
   ...tableBase,
   job_result_id: text(),
+  meta: json(),
+  stdout: text(),
+  stderr: text(),
+  uploadUrl: text(),
+  status: judge_status(),
+  message: text(),
 });
 
-export const jobResults = schema.table("job_results", {
+export const jobResults = pgTable("job_results", {
   ...tableBase,
+  success: boolean(),
 });
 
 export const jobStepReultsRelations = relations(jobStepResults, ({ one }) => ({
