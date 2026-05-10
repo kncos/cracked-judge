@@ -9,10 +9,12 @@ import { createRedisPool, type RedisPool } from "./redis-pool";
 
 import { ReplyError } from "ioredis";
 import z, { ZodError } from "zod/v4";
+import { db } from "./db";
+import { jobResults, jobStepResults } from "./db/schema";
 import { redisLogger } from "./lib/logger";
 
 export const JOB_QUEUE = "jobs" as const;
-export const RESULT_STREAM = "results" as const;
+export const RESULTS_SINK_QUEUE = "results" as const;
 
 declare module "ioredis" {
   export interface ReplyError extends Error {
@@ -70,7 +72,50 @@ export class RedisManager {
     return new RedisManager(pool);
   };
 
-  sink = async () => {};
+  sink = async (signal: AbortSignal) => {
+    const redis = await this.redisPool.acquire();
+
+    try {
+      while (!signal.aborted) {
+        const raw = await redis.brpop(RESULTS_SINK_QUEUE, 1);
+        if (!raw) {
+          continue;
+        }
+
+        const parsed = zJobResult.safeParse(JSON.parse(raw[1]));
+        if (!parsed.success) {
+          redisLogger.error(
+            "Sink failed to parse result from queue, dropping.\n" +
+              z.prettifyError(parsed.error),
+          );
+          continue;
+        }
+        const entry = parsed.data;
+        try {
+          await db.transaction(async (tx) => {
+            await tx.insert(jobResults).values(entry);
+            await tx.insert(jobStepResults).values(
+              entry.stepResults.map((step) => ({
+                ...step,
+                job_result_id: entry.id,
+              })),
+            );
+          });
+        } catch (e) {
+          redisLogger.error(
+            { result: raw },
+            "Sink failed to commit result to db.\n" +
+              `Error Message: ${(e as Error).message}\n`,
+          );
+          // no re-insert for now actually
+        }
+      }
+    } catch (e) {
+      return handleRedisError("sink", e);
+    } finally {
+      await this.redisPool.destroy(redis);
+    }
+  };
 
   destroy = async () => {
     redisLogger.debug("Draining redis pool...");
@@ -142,8 +187,8 @@ export class RedisManager {
       const serialized = JSON.stringify(input);
       logger.debug(`Setting ${key} in redis`);
       await redis.set(key, serialized);
-      logger.debug(`Adding ${input.id} on queue ${RESULT_STREAM}`);
-      await redis.lpush(RESULT_STREAM, input.id);
+      logger.debug(`Adding ${input.id} on queue ${RESULTS_SINK_QUEUE}`);
+      await redis.lpush(RESULTS_SINK_QUEUE, input.id);
       logger.debug("finished");
     } catch (e) {
       return handleRedisError("enqueueJobResult", e);
@@ -157,7 +202,7 @@ export class RedisManager {
     const logger = redisLogger.child({}, { msgPrefix: "dequeueJobResult: " });
     try {
       logger.debug("popping job result...");
-      const popped = await redis.brpop(RESULT_STREAM, timeoutSec);
+      const popped = await redis.brpop(RESULTS_SINK_QUEUE, timeoutSec);
       // null if it timed out
       if (popped === null) {
         logger.debug("popping popped null job result");

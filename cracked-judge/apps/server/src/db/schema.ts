@@ -24,7 +24,7 @@ export const judge_status = pgEnum("judge_status", JUDGE_STATUS_CODES);
 
 export const jobStepResults = pgTable("job_step_results", {
   ...tableBase,
-  job_result_id: text(),
+  job_result_id: text().references(() => jobResults.id),
   meta: json(),
   stdout: text(),
   stderr: text(),
@@ -38,7 +38,7 @@ export const jobResults = pgTable("job_results", {
   success: boolean(),
 });
 
-export const jobStepReultsRelations = relations(jobStepResults, ({ one }) => ({
+export const jobStepResultsRelations = relations(jobStepResults, ({ one }) => ({
   job_result: one(jobResults, {
     fields: [jobStepResults.job_result_id],
     references: [jobResults.id],
