@@ -1,8 +1,8 @@
 import z from "zod";
-import { JUDGE_STATUS_CODES } from "./types";
+import { JOB_STATUS_CODES } from "./types";
 
 /** user friendly judge status codes */
-export const zJudgeStatus = z.enum(JUDGE_STATUS_CODES);
+export const zJobStatus = z.enum(JOB_STATUS_CODES);
 
 /**
  * Options for isolate.
@@ -79,13 +79,14 @@ export const zJobStepResult = z.object({
   stdout: z.string(),
   stderr: z.string(),
   uploadUrl: z.url().optional(),
-  status: zJudgeStatus,
+  status: zJobStatus,
   message: z.string(),
 });
 
 export const zJobResult = z.object({
   id: z.string(),
-  // stops after the first failed step
-  stepResults: z.array(zJobStepResult),
-  success: z.boolean(),
+  status: zJobStatus,
+  stdout: z.string(),
+  stderr: z.string(),
+  uploadUrl: z.url().optional(),
 });

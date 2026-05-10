@@ -1,12 +1,10 @@
-export const JUDGE_STATUS_CODES = [
-  "IE",
-  "CE",
-  "RE",
-  "MLE",
-  "TLE",
-  "WA",
+export const JOB_STATUS_CODES = [
   "AC",
+  "NZE",
+  "TLE",
+  "MLE",
   "OLE",
+  "IE",
 ] as const;
 
-export type JudgeStatus = (typeof JUDGE_STATUS_CODES)[number];
+export type JobStatus = (typeof JOB_STATUS_CODES)[number];
