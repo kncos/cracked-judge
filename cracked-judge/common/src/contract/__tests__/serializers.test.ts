@@ -15,7 +15,6 @@ const baseStep: Job["steps"][0] = {
     time: 1.5,
     cg_mem: 65536,
     wall_time: 2.0,
-    box_id: 0,
   },
   dependencyUrls: ["https://example.com/dep.tar.gz"],
 };
@@ -24,6 +23,7 @@ describe("contract serializer tests", () => {
   it("zJob: serialize & deserialize (no files)", async () => {
     const job: Job = {
       id: "job-no-files",
+      type: "generic",
       steps: [baseStep],
     };
 
@@ -37,14 +37,15 @@ describe("contract serializer tests", () => {
     expect(step?.cmd).toEqual(baseStep.cmd);
     expect(step?.isolateOpts).toEqual(baseStep.isolateOpts);
     expect(step?.dependencyUrls).toEqual(baseStep.dependencyUrls);
-    expect(step?.files).toBeUndefined();
+    expect(step?.tarball).toBeUndefined();
   });
 
   it("zJob: serialize & deserialize (with files)", async () => {
     const files = new File([Buffer.from(someFileContent)], "files");
     const job: Job = {
       id: "job-with-files",
-      steps: [{ ...baseStep, files }],
+      type: "generic",
+      steps: [{ ...baseStep, tarball: files }],
     };
 
     const serialized = await serializeJob(job);
@@ -53,11 +54,11 @@ describe("contract serializer tests", () => {
     expect(deserialized.id).toBe(job.id);
 
     const step = deserialized.steps[0];
-    expect(step?.files).toBeInstanceOf(File);
+    expect(step?.tarball).toBeInstanceOf(File);
     // deserializeJob hardcodes the reconstructed filename
-    expect(step?.files?.name).toBe("files.tar");
+    expect(step?.tarball?.name).toBe("files.tar");
 
-    const roundTrippedContent = await step?.files?.text();
+    const roundTrippedContent = await step?.tarball?.text();
     expect(roundTrippedContent).toBe(someFileContent);
   });
 
@@ -65,11 +66,12 @@ describe("contract serializer tests", () => {
     const files = new File([Buffer.from(someFileContent)], "files");
     const job: Job = {
       id: "job-multi-step",
+      type: "generic",
       steps: [
-        { ...baseStep, files },
+        { ...baseStep, tarball: files },
         {
           cmd: ["python3", "solution.py"],
-          isolateOpts: { time: 2.0, cg_mem: 131072, box_id: 1 },
+          isolateOpts: { time: 2.0, cg_mem: 131072 },
           dependencyUrls: [],
           uploadUrl: "https://example.com/upload",
           // no files on this step
@@ -83,8 +85,8 @@ describe("contract serializer tests", () => {
     expect(deserialized.id).toBe("job-multi-step");
     expect(deserialized.steps).toHaveLength(2);
 
-    expect(deserialized?.steps[0]?.files).toBeInstanceOf(File);
-    expect(deserialized?.steps[1]?.files).toBeUndefined();
+    expect(deserialized?.steps[0]?.tarball).toBeInstanceOf(File);
+    expect(deserialized?.steps[1]?.tarball).toBeUndefined();
     expect(deserialized?.steps[1]?.uploadUrl).toBe(
       "https://example.com/upload",
     );
@@ -93,6 +95,7 @@ describe("contract serializer tests", () => {
   it("zJob: serialized output is a Buffer/Uint8Array", async () => {
     const job: Job = {
       id: "job-buffer-check",
+      type: "generic",
       steps: [baseStep],
     };
 

@@ -6,11 +6,7 @@ import type { apiRouterContract } from "./api";
 export const createUserClient = (url: string) => {
   const link = new RPCLink({ url });
   const client = createORPCClient(link);
-  return client as ContractRouterClient<typeof apiRouterContract.user>;
-};
-
-export const createAdminClient = (url: string) => {
-  const link = new RPCLink({ url });
-  const client = createORPCClient(link);
-  return client as ContractRouterClient<typeof apiRouterContract.admin>;
+  return client as ContractRouterClient<
+    Omit<typeof apiRouterContract, "worker">
+  >;
 };

@@ -9,8 +9,6 @@ import { createRedisPool, type RedisPool } from "./redis-pool";
 
 import { ReplyError } from "ioredis";
 import z, { ZodError } from "zod/v4";
-import { db } from "./db";
-import { jobResults, jobStepResults } from "./db/schema";
 import { redisLogger } from "./lib/logger";
 
 export const JOB_QUEUE = "jobs" as const;
@@ -70,51 +68,6 @@ export class RedisManager {
   static create = async () => {
     const pool = await createRedisPool();
     return new RedisManager(pool);
-  };
-
-  sink = async (signal: AbortSignal) => {
-    const redis = await this.redisPool.acquire();
-
-    try {
-      while (!signal.aborted) {
-        const raw = await redis.brpop(RESULTS_SINK_QUEUE, 1);
-        if (!raw) {
-          continue;
-        }
-
-        const parsed = zJobResult.safeParse(JSON.parse(raw[1]));
-        if (!parsed.success) {
-          redisLogger.error(
-            "Sink failed to parse result from queue, dropping.\n" +
-              z.prettifyError(parsed.error),
-          );
-          continue;
-        }
-        const entry = parsed.data;
-        try {
-          await db.transaction(async (tx) => {
-            await tx.insert(jobResults).values(entry);
-            await tx.insert(jobStepResults).values(
-              entry.stepResults.map((step) => ({
-                ...step,
-                job_result_id: entry.id,
-              })),
-            );
-          });
-        } catch (e) {
-          redisLogger.error(
-            { result: raw },
-            "Sink failed to commit result to db.\n" +
-              `Error Message: ${(e as Error).message}\n`,
-          );
-          // no re-insert for now actually
-        }
-      }
-    } catch (e) {
-      return handleRedisError("sink", e);
-    } finally {
-      await this.redisPool.destroy(redis);
-    }
   };
 
   destroy = async () => {

@@ -1,8 +1,4 @@
 import z from "zod";
-import { JOB_STATUS_CODES } from "./types";
-
-/** user friendly judge status codes */
-export const zJobStatus = z.enum(JOB_STATUS_CODES);
 
 /**
  * Options for isolate.
@@ -35,58 +31,68 @@ export const zIsolateRunOpts = z.object({
   box_id: z.int(),
 });
 
-export const zIsolateMeta = z.object({
-  cg_mem: z.coerce.number(),
-  // the key is present with value `1` if its true. Normalized to true/false here
-  cg_oom_killed: z.coerce
-    .number()
-    .optional()
-    .default(0)
-    .transform((v) => v === 1),
-  csw_forced: z.coerce.number(),
-  csw_voluntary: z.coerce.number(),
-  exitcode: z.coerce.number().optional(),
-  exitsig: z.coerce.number().optional(),
-  // normalized to true/false
-  killed: z.coerce
-    .number()
-    .optional()
-    .default(0)
-    .transform((v) => v === 1),
-  max_rss: z.coerce.number(),
-  message: z.string().optional().default("N/A"),
-  status: z.enum(["RE", "SG", "TO", "XX"]).optional(),
-  time: z.coerce.number(),
-  time_wall: z.coerce.number(),
+export const GENERIC_JOB_STATUSES = [
+  "success",
+  "non_zero_exit",
+  "time_limit_exceeded",
+  "memory_limit_exceeded",
+  "output_limit_exceeded",
+  "internal_error",
+] as const;
+export type GenericJobStatus = (typeof GENERIC_JOB_STATUSES)[number];
+
+export const JOB_TYPES = ["generic", "judge"] as const;
+export type JobType = (typeof JOB_TYPES)[number];
+
+export const zJobStepResult = z.object({
+  memory: z.number(),
+  time: z.number(),
+  time_wall: z.number(),
+  status: z.enum(GENERIC_JOB_STATUSES),
+  exit_code: z.int(),
+  exit_signal: z.int(),
+  forced_context_switches: z.number(),
+  voluntary_context_switches: z.number(),
+  stdout: z.string(),
+  stderr: z.string(),
+});
+
+export const zJobResult = z.object({
+  id: z.string(),
+  steps: z.array(zJobStepResult),
+  success: z.boolean(),
+  type: z.enum(["generic", "judge"]),
+});
+
+export const JUDGE_JOB_STATUSES = [
+  "success",
+  "wrong_answer",
+  "runtime_error",
+  "compiler_error",
+  "time_limit_exceeded",
+  "memory_limit_exceeded",
+  "output_limit_exceeded",
+  "internal_error",
+] as const;
+export type JudgeJobStatus = (typeof JUDGE_JOB_STATUSES)[number];
+
+export const zJudgeResult = z.object({
+  id: z.string(),
+  status: z.enum(JUDGE_JOB_STATUSES),
+  compile: zJobStepResult.omit({ status: true }).partial().optional(),
+  run: zJobStepResult.omit({ status: true }).partial().optional(),
 });
 
 export const zJobStep = z.object({
   cmd: z.array(z.string()),
-  isolateOpts: zIsolateRunOpts.omit({ box_id: true }),
-  dependencyUrls: z.array(z.url()),
-  files: z.file().optional(),
+  tarball: z.file().optional(),
+  isolateOpts: zIsolateRunOpts.omit({ box_id: true }).optional(),
+  dependencyUrls: z.array(z.url()).optional(),
   uploadUrl: z.url().optional(),
 });
 
 export const zJob = z.object({
   id: z.string(),
-  box_id: z.int().optional().default(0),
-  steps: z.array(zJobStep).nonempty(),
-});
-
-export const zJobStepResult = z.object({
-  meta: zIsolateMeta,
-  stdout: z.string(),
-  stderr: z.string(),
-  uploadUrl: z.url().optional(),
-  status: zJobStatus,
-  message: z.string(),
-});
-
-export const zJobResult = z.object({
-  id: z.string(),
-  status: zJobStatus,
-  stdout: z.string(),
-  stderr: z.string(),
-  uploadUrl: z.url().optional(),
+  type: z.enum(["generic", "judge"]),
+  steps: z.array(zJobStep),
 });
