@@ -21,7 +21,7 @@ export const deserializeJob = (input: Buffer | Uint8Array) => {
   };
   const steps = unpacked.steps.map((step) => ({
     ...step,
-    tarball: step.tarball ? new File([step.tarball], "tarball.tar") : undefined,
+    tarball: step.tarball ? new File([step.tarball], "files.tar") : undefined,
   }));
   return zJob.parse({
     ...unpacked,
