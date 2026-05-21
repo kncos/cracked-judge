@@ -85,14 +85,14 @@ export const zJudgeResult = z.object({
 
 export const zJobStep = z.object({
   cmd: z.array(z.string()),
-  tarball: z.file().optional(),
   isolateOpts: zIsolateRunOpts.omit({ box_id: true }).optional(),
-  dependencyUrls: z.array(z.url()).optional(),
   uploadUrl: z.url().optional(),
 });
 
 export const zJob = z.object({
   id: z.string(),
   type: z.enum(["generic", "judge"]),
+  tarball: z.file().optional(),
+  dependencyUrls: z.array(z.url()).optional(),
   steps: z.array(zJobStep),
 });

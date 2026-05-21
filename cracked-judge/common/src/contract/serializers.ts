@@ -3,28 +3,22 @@ import type z from "zod";
 import { zJob } from "./schemas";
 
 export const serializeJob = async (input: z.infer<typeof zJob>) => {
-  const steps = await Promise.all(
-    input.steps.map(async (step) => ({
-      ...step,
-      tarball: await step.tarball?.bytes(),
-    })),
-  );
+  const tarball = await input.tarball?.bytes();
   return pack({
     ...input,
-    steps,
+    tarball,
   });
 };
 
 export const deserializeJob = (input: Buffer | Uint8Array) => {
   const unpacked = unpack(input) as {
-    steps: Array<{ tarball: Uint8Array }>;
+    tarball?: Uint8Array;
   };
-  const steps = unpacked.steps.map((step) => ({
-    ...step,
-    tarball: step.tarball ? new File([step.tarball], "files.tar") : undefined,
-  }));
+  const tarball = unpacked.tarball
+    ? new File([unpacked.tarball], "files.tar")
+    : undefined;
   return zJob.parse({
     ...unpacked,
-    steps,
+    tarball,
   });
 };

@@ -82,14 +82,11 @@ export class RedisManager {
     const redis = await this.redisPool.acquire();
     const logger = redisLogger.child({}, { msgPrefix: "enqueueJob: " });
     try {
-      const key = keyPrefixer.job(input.id);
-      logger.debug("Serializing Job...");
+      logger.debug("serializing job...");
       const serialized = await serializeJob(input);
-      logger.debug(`Setting job key: ${key}`);
-      await redis.set(key, serialized);
-      logger.debug(`pushing id to ${JOB_QUEUE}: ${input.id}`);
-      await redis.lpush(JOB_QUEUE, input.id);
-      logger.debug(`finished`);
+      logger.debug("adding job to queue...");
+      await redis.lpush(JOB_QUEUE, serialized);
+      logger.debug("DONE: job queued!");
     } catch (e) {
       return handleRedisError("enqueueJob", e);
     } finally {
@@ -101,28 +98,17 @@ export class RedisManager {
     const redis = await this.redisPool.acquire();
     const logger = redisLogger.child({}, { msgPrefix: "dequeueJob: " });
     try {
-      logger.debug(`waiting for job in queue: ${JOB_QUEUE}`);
-      const popped = await redis.brpop(JOB_QUEUE, timeoutSec);
+      logger.debug(`waiting for job in queue: ${JOB_QUEUE}...`);
+      const popped = await redis.brpopBuffer(JOB_QUEUE, timeoutSec);
       // null if it timed out
       if (popped === null) {
-        logger.debug(`popped null job`);
+        logger.debug(`timed out, returning null.`);
         return null;
       }
-      const [_, id] = popped;
-      logger.debug(`got id ${id}`);
-      const key = keyPrefixer.job(id);
-      logger.debug(`getting buffer for key: ${key}`);
-      const serialized = await redis.getBuffer(key);
-      if (serialized === null) {
-        throw new CrackedError("REDIS_ERROR", {
-          message: `Found key (${key}) but no associated data buffer`,
-        });
-      }
+      const [_, serialized] = popped;
       logger.debug(`deserializing job...`);
       const deserialized = deserializeJob(serialized);
-      logger.debug(`deleting old key`);
-      await redis.del(key);
-      logger.debug(`finished`);
+      logger.debug(`finished.`);
       return deserialized;
     } catch (e) {
       return handleRedisError("dequeueJob", e);
@@ -135,14 +121,17 @@ export class RedisManager {
     const redis = await this.redisPool.acquire();
     const logger = redisLogger.child({}, { msgPrefix: "enqueueJobResult: " });
     try {
-      const key = keyPrefixer.result(input.id);
-      logger.debug(`Serializing result for key ${key}...`);
+      logger.debug("Serializing job result...");
       const serialized = JSON.stringify(input);
-      logger.debug(`Setting ${key} in redis`);
-      await redis.set(key, serialized);
-      logger.debug(`Adding ${input.id} on queue ${RESULTS_SINK_QUEUE}`);
-      await redis.lpush(RESULTS_SINK_QUEUE, input.id);
-      logger.debug("finished");
+      logger.debug("Adding job result to queues...");
+      await redis
+        .pipeline()
+        .lpush(RESULTS_SINK_QUEUE, serialized)
+        .lpush(keyPrefixer.result(input.id), serialized)
+        // automatic clean up, we would never be waiting 10 minutes
+        .expire(keyPrefixer.result(input.id), 600)
+        .exec();
+      logger.debug("Job Result enqueued.");
     } catch (e) {
       return handleRedisError("enqueueJobResult", e);
     } finally {
@@ -150,35 +139,55 @@ export class RedisManager {
     }
   };
 
-  dequeueJobResult = async (timeoutSec: number = 30) => {
+  consumeJobResults = async (params: {
+    batchSize: number;
+    timeout: number;
+  }) => {
+    const { batchSize, timeout } = params;
     const redis = await this.redisPool.acquire();
-    const logger = redisLogger.child({}, { msgPrefix: "dequeueJobResult: " });
+    const logger = redisLogger.child({}, { msgPrefix: "consumeJobResults: " });
     try {
-      logger.debug("popping job result...");
-      const popped = await redis.brpop(RESULTS_SINK_QUEUE, timeoutSec);
-      // null if it timed out
-      if (popped === null) {
-        logger.debug("popping popped null job result");
+      const res = await redis.blmpop(
+        timeout,
+        1,
+        RESULTS_SINK_QUEUE,
+        "LEFT",
+        "COUNT",
+        batchSize,
+      );
+      if (res === null) {
+        logger.debug("No results to consume (timed out).");
         return null;
       }
-      const [_, id] = popped;
-      logger.debug(`Popped job ${id}`);
-      const key = keyPrefixer.result(id);
-      logger.debug(`Getting buffer for key ${key}`);
-      const serialized = await redis.getBuffer(key);
-      if (serialized === null) {
-        throw new CrackedError("REDIS_ERROR", {
-          message: `Found key (${key}) but no associated data buffer`,
-        });
-      }
-      logger.debug(`deserializing...`);
-      const deserialized = JSON.parse(serialized.toString()) as unknown;
-      logger.debug(`removing key ${key}`);
-      await redis.del(key);
-      logger.debug("finished");
-      return deserialized;
+      const results = res[1].map((serialized) =>
+        zJobResult.parse(JSON.parse(serialized)),
+      );
+      return results;
     } catch (e) {
-      return handleRedisError("dequeueJobResult", e);
+      return handleRedisError("consumeJobResults", e);
+    } finally {
+      await this.redisPool.destroy(redis);
+    }
+  };
+
+  awaitJobResult = async (params: { jobId: string; timeout: number }) => {
+    const { jobId, timeout } = params;
+    const redis = await this.redisPool.acquire();
+    const logger = redisLogger.child({}, { msgPrefix: "awaitJobResult: " });
+    try {
+      logger.debug("Waiting for job result... ");
+      const popped = await redis.brpop(keyPrefixer.result(jobId), timeout);
+      if (popped === null) {
+        logger.debug("No job result (timed out).");
+        return null;
+      }
+      const [_, serialized] = popped;
+      logger.debug("Deserializing job result...");
+      const result = zJobResult.parse(JSON.parse(serialized));
+      logger.debug("Done!");
+      return result;
+    } catch (e) {
+      return handleRedisError("awaitJobResult", e);
     } finally {
       await this.redisPool.destroy(redis);
     }

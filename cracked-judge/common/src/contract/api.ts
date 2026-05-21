@@ -19,7 +19,7 @@ export const apiRouterContract = {
     test: oc.output(zCheckRes),
   },
   job: {
-    submit: oc.input(zJob.omit({ id: true })).output(zJobResult),
+    submit: oc.input(zJob.omit({ id: true })).output(zJobResult.nullable()),
     get: oc.input(z.string()).output(zJobResult.nullable()),
     test: oc.output(zCheckRes),
   },

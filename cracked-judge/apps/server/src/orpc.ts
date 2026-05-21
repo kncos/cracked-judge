@@ -25,5 +25,4 @@ const timingMiddleware = o.middleware(async ({ next, path }) => {
   return result;
 });
 
-export const vmRoute = o.$context<WebsocketCtx>().use(timingMiddleware);
-export const publicRoute = o.$context<BaseCtx>().use(timingMiddleware);
+export const route = o.use(timingMiddleware);
