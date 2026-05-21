@@ -15,13 +15,10 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
-import { nanoid } from "nanoid";
-import type z from "zod";
+import z from "zod";
 
 const tableBase = {
-  id: text()
-    .primaryKey()
-    .$defaultFn(() => nanoid(8)),
+  id: text().primaryKey(),
   created_at: timestamp().defaultNow().notNull(),
   updated_at: timestamp(),
 } as const;
@@ -36,14 +33,14 @@ export const jobType = pgEnum("job_type", JOB_TYPES);
 type StepsType = Array<z.infer<typeof zJobStepResult>>;
 export const jobResults = pgTable("job_results", {
   ...tableBase,
-  success: boolean(),
+  success: boolean().notNull(),
   steps: jsonb().$type<StepsType>(),
-  type: jobType(),
+  type: jobType().notNull(),
 });
 
 export const judgeResults = pgTable("judge_results", {
   id: text().primaryKey(),
-  status: judgeJobStatus(),
+  status: judgeJobStatus().notNull(),
 
   // compile stats
   compile_memory: numeric(),
