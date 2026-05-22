@@ -1,6 +1,6 @@
 import { oc } from "@orpc/contract";
 import z from "zod";
-import { zJob, zJobResult, zJudgeResult } from "./schemas";
+import { zJob, zJobResult, zJudgeResult } from "../db/types";
 
 const zCheckRes = z.object({ ok: z.boolean() });
 
@@ -14,7 +14,7 @@ export const apiRouterContract = {
           tarball: z.file(),
         }),
       )
-      .output(zJudgeResult),
+      .output(zJudgeResult.nullable()),
     get: oc.input(z.string()).output(zJudgeResult.nullable()),
     test: oc.output(zCheckRes),
   },

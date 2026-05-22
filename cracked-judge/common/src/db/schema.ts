@@ -1,11 +1,6 @@
 import {
-  GENERIC_JOB_STATUSES,
-  JOB_TYPES,
-  JUDGE_JOB_STATUSES,
-  zJobStepResult,
-} from "@cracked-judge/common/contract";
-import {
   boolean,
+  bytea,
   integer,
   jsonb,
   numeric,
@@ -14,8 +9,8 @@ import {
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
-
-import z from "zod";
+import type { JobStep, JobStepResult } from "./types";
+import { GENERIC_JOB_STATUSES, JOB_TYPES, JUDGE_JOB_STATUSES } from "./types";
 
 const tableBase = {
   id: text().primaryKey(),
@@ -30,11 +25,18 @@ export const genericJobStatus = pgEnum(
 export const judgeJobStatus = pgEnum("judge_job_status", JUDGE_JOB_STATUSES);
 export const jobType = pgEnum("job_type", JOB_TYPES);
 
-type StepsType = Array<z.infer<typeof zJobStepResult>>;
+export const jobs = pgTable("jobs", {
+  ...tableBase,
+  type: jobType().notNull(),
+  tarball: bytea(),
+  dependency_urls: text().array(),
+  steps: jsonb().$type<Array<JobStep>>().notNull(),
+});
+
 export const jobResults = pgTable("job_results", {
   ...tableBase,
   success: boolean().notNull(),
-  steps: jsonb().$type<StepsType>(),
+  steps: jsonb().$type<Array<JobStepResult>>().notNull(),
   type: jobType().notNull(),
 });
 

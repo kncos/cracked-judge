@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type z from "zod";
-import type { zJob } from "../schemas";
+import type { zJob } from "../../db/types";
 import { deserializeJob, serializeJob } from "../serializers";
 
 const someFileContent =
