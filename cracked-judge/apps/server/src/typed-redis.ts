@@ -1,10 +1,6 @@
 import { CrackedError } from "@cracked-judge/common";
-import {
-  deserializeJob,
-  serializeJob,
-  zJob,
-  zJobResult,
-} from "@cracked-judge/common/contract";
+import { deserializeJob, serializeJob } from "@cracked-judge/common/contract";
+import { zJob, zJobResult } from "@cracked-judge/common/db";
 import { createRedisPool, type RedisPool } from "./redis-pool";
 
 import { ReplyError } from "ioredis";
@@ -83,7 +79,7 @@ export class RedisManager {
     const logger = redisLogger.child({}, { msgPrefix: "enqueueJob: " });
     try {
       logger.debug("serializing job...");
-      const serialized = await serializeJob(input);
+      const serialized = serializeJob(input);
       logger.debug("adding job to queue...");
       await redis.lpush(JOB_QUEUE, serialized);
       logger.debug("DONE: job queued!");

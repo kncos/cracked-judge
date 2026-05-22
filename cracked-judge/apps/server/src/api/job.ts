@@ -1,3 +1,4 @@
+import { db } from "@cracked-judge/common/db";
 import { nanoid } from "nanoid";
 import { route } from "../orpc";
 
@@ -17,9 +18,14 @@ export const job = route.job.router({
 
     return res;
   }),
-  get: route.job.get.handler(async ({ input, context }) => {
-    //
-    return null;
+  get: route.job.get.handler(async ({ input }) => {
+    const res = await db.query.jobResults.findFirst({
+      where: {
+        id: input,
+      },
+    });
+
+    return res ?? null;
   }),
   test: route.job.test.handler(() => ({ ok: true })),
 });
